@@ -34,12 +34,23 @@ export default function ProductEdit() {
   const { id } = useParams();
   const navigate = useNavigate();
   
-  // Initialize form with product data
+  // Initialize form with product data and component fields
   const [formData, setFormData] = useState<Partial<Product>>(mockProduct);
+  const [componentData, setComponentData] = useState({
+    rubber_mix: 'NBR-85',
+    bushing_code: 'BO-012',
+    rubber_volume: 45.5,
+    blade_count: 6,
+    shaft_profile: 'round'
+  });
   const [isSaving, setIsSaving] = useState(false);
 
   const handleSave = async () => {
     setIsSaving(true);
+    
+    // Combine form data with component data
+    const fullData = { ...formData, ...componentData };
+    console.log('Saving product data:', fullData);
     
     // Simulate API call
     setTimeout(() => {
@@ -253,7 +264,10 @@ export default function ProductEdit() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="space-y-2">
                     <Label htmlFor="rubber_mix">Mescola Gomma</Label>
-                    <Select>
+                    <Select 
+                      value={componentData.rubber_mix} 
+                      onValueChange={(value) => setComponentData(prev => ({ ...prev, rubber_mix: value }))}
+                    >
                       <SelectTrigger className="input-business">
                         <SelectValue placeholder="Seleziona mescola" />
                       </SelectTrigger>
@@ -267,7 +281,10 @@ export default function ProductEdit() {
                   
                   <div className="space-y-2">
                     <Label htmlFor="bushing_code">Codice Bussola</Label>
-                    <Select>
+                    <Select 
+                      value={componentData.bushing_code} 
+                      onValueChange={(value) => setComponentData(prev => ({ ...prev, bushing_code: value }))}
+                    >
                       <SelectTrigger className="input-business">
                         <SelectValue placeholder="Seleziona bussola" />
                       </SelectTrigger>
@@ -287,7 +304,8 @@ export default function ProductEdit() {
                       id="rubber_volume"
                       type="number"
                       step="0.1"
-                      placeholder="45.5"
+                      value={componentData.rubber_volume || ''}
+                      onChange={(e) => setComponentData(prev => ({ ...prev, rubber_volume: parseFloat(e.target.value) || 0 }))}
                       className="input-business"
                     />
                   </div>
@@ -297,14 +315,18 @@ export default function ProductEdit() {
                     <Input
                       id="blade_count"
                       type="number"
-                      placeholder="6"
+                      value={componentData.blade_count || ''}
+                      onChange={(e) => setComponentData(prev => ({ ...prev, blade_count: parseInt(e.target.value) || 0 }))}
                       className="input-business"
                     />
                   </div>
                   
                   <div className="space-y-2">
                     <Label htmlFor="shaft_profile">Profilo Albero</Label>
-                    <Select>
+                    <Select 
+                      value={componentData.shaft_profile} 
+                      onValueChange={(value) => setComponentData(prev => ({ ...prev, shaft_profile: value }))}
+                    >
                       <SelectTrigger className="input-business">
                         <SelectValue placeholder="Tipo profilo" />
                       </SelectTrigger>

@@ -122,7 +122,10 @@ export default function RFQ() {
             <h1 className="text-heading">Gestione RFQ</h1>
             <p className="text-body">Richieste di quotazione e gestione offerte</p>
           </div>
-          <Button className="btn-primary">
+          <Button 
+            className="btn-primary"
+            onClick={() => window.location.href = '/rfq/new'}
+          >
             <Plus className="h-4 w-4 mr-2" />
             Nuova RFQ
           </Button>
@@ -265,7 +268,10 @@ export default function RFQ() {
               <p className="text-muted-foreground mb-4">
                 Prova a modificare i filtri di ricerca o crea una nuova RFQ.
               </p>
-              <Button className="btn-primary">
+              <Button 
+                className="btn-primary"
+                onClick={() => window.location.href = '/rfq/new'}
+              >
                 <Plus className="h-4 w-4 mr-2" />
                 Nuova RFQ
               </Button>

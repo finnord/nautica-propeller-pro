@@ -103,7 +103,10 @@ export default function Equivalences() {
             <h1 className="text-heading">Gestione Equivalenze</h1>
             <p className="text-body">Equivalenze tra giranti e bussole per sostituzioni</p>
           </div>
-          <Button className="btn-primary">
+          <Button 
+            className="btn-primary"
+            onClick={() => window.location.href = '/equivalences/new'}
+          >
             <Plus className="h-4 w-4 mr-2" />
             Nuova Equivalenza
           </Button>
@@ -220,7 +223,10 @@ export default function Equivalences() {
                   <p className="text-muted-foreground mb-4">
                     Prova a modificare i criteri di ricerca o aggiungi una nuova equivalenza.
                   </p>
-                  <Button className="btn-primary">
+                  <Button 
+                    className="btn-primary"
+                    onClick={() => window.location.href = '/equivalences/new'}
+                  >
                     <Plus className="h-4 w-4 mr-2" />
                     Nuova Equivalenza Girante
                   </Button>
@@ -296,7 +302,10 @@ export default function Equivalences() {
                   <p className="text-muted-foreground mb-4">
                     Prova a modificare i criteri di ricerca o aggiungi una nuova equivalenza.
                   </p>
-                  <Button className="btn-primary">
+                  <Button 
+                    className="btn-primary"
+                    onClick={() => window.location.href = '/equivalences/new'}
+                  >
                     <Plus className="h-4 w-4 mr-2" />
                     Nuova Equivalenza Bussola
                   </Button>

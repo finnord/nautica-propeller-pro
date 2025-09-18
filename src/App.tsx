@@ -10,8 +10,10 @@ import ProductEdit from "./pages/ProductEdit";
 import ProductNew from "./pages/ProductNew";
 import Customers from "./pages/Customers";
 import RFQ from "./pages/RFQ";
+import RFQNew from "./pages/RFQNew";
 import Search from "./pages/Search";
 import Equivalences from "./pages/Equivalences";
+import EquivalenceNew from "./pages/EquivalenceNew";
 import ImportExport from "./pages/ImportExport";
 import NotFound from "./pages/NotFound";
 
@@ -31,8 +33,10 @@ const App = () => (
           <Route path="/products/:id/edit" element={<ProductEdit />} />
           <Route path="/customers" element={<Customers />} />
           <Route path="/rfq" element={<RFQ />} />
+          <Route path="/rfq/new" element={<RFQNew />} />
           <Route path="/search" element={<Search />} />
           <Route path="/equivalences" element={<Equivalences />} />
+          <Route path="/equivalences/new" element={<EquivalenceNew />} />
           <Route path="/import-export" element={<ImportExport />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
