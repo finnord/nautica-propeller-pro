@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Progress } from '@/components/ui/progress';
+import { useToast } from '@/hooks/use-toast';
 import { 
   Upload, 
   Download, 
@@ -13,8 +14,10 @@ import {
   AlertCircle,
   CheckCircle,
   XCircle,
-  Eye
+  Eye,
+  ExternalLink
 } from 'lucide-react';
+import { downloadTemplate, downloadExportData } from '@/lib/excel-utils';
 
 type ImportStatus = 'idle' | 'uploading' | 'validating' | 'importing' | 'completed' | 'error';
 type ValidationResult = {
@@ -28,6 +31,7 @@ export default function ImportExport() {
   const [importStatus, setImportStatus] = useState<ImportStatus>('idle');
   const [importProgress, setImportProgress] = useState(0);
   const [validationResults, setValidationResults] = useState<ValidationResult[]>([]);
+  const { toast } = useToast();
 
   const mockValidationResults: ValidationResult[] = [
     {
@@ -97,6 +101,38 @@ export default function ImportExport() {
     if (hasErrors) return XCircle;
     if (hasWarnings) return AlertCircle;
     return CheckCircle;
+  };
+
+  const handleDownloadTemplate = () => {
+    const success = downloadTemplate();
+    if (success) {
+      toast({
+        title: "Template scaricato",
+        description: "Il template Excel è stato scaricato con successo",
+      });
+    } else {
+      toast({
+        title: "Errore download",
+        description: "Si è verificato un errore durante il download",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleExport = (type: 'products' | 'customers' | 'rfq' | 'equivalences' | 'complete', format: 'xlsx' | 'csv' = 'xlsx') => {
+    const success = downloadExportData(type, format);
+    if (success) {
+      toast({
+        title: "Export completato",
+        description: `I dati sono stati esportati in formato ${format.toUpperCase()}`,
+      });
+    } else {
+      toast({
+        title: "Errore export",
+        description: "Si è verificato un errore durante l'export",
+        variant: "destructive",
+      });
+    }
   };
 
   return (
@@ -175,12 +211,18 @@ export default function ImportExport() {
                 </div>
                 
                 <div className="flex gap-3">
-                  <Button variant="outline">
+                  <Button 
+                    variant="outline"
+                    onClick={handleDownloadTemplate}
+                  >
                     <Download className="h-4 w-4 mr-2" />
                     Scarica Template v3
                   </Button>
-                  <Button variant="outline">
-                    <Eye className="h-4 w-4 mr-2" />
+                  <Button 
+                    variant="outline"
+                    onClick={() => window.open('https://docs.google.com/document/d/example-import-guide', '_blank')}
+                  >
+                    <ExternalLink className="h-4 w-4 mr-2" />
                     Guida Import
                   </Button>
                 </div>
@@ -304,11 +346,19 @@ export default function ImportExport() {
                     Esporta tutti i prodotti con dimensioni, materiali e prezzi
                   </p>
                   <div className="flex gap-2">
-                    <Button size="sm" variant="outline">
+                    <Button 
+                      size="sm" 
+                      variant="outline"
+                      onClick={() => handleExport('equivalences', 'xlsx')}
+                    >
                       <FileSpreadsheet className="h-3 w-3 mr-1" />
                       Excel
                     </Button>
-                    <Button size="sm" variant="outline">
+                    <Button 
+                      size="sm" 
+                      variant="outline"
+                      onClick={() => handleExport('equivalences', 'csv')}
+                    >
                       <FileText className="h-3 w-3 mr-1" />
                       CSV
                     </Button>
@@ -328,11 +378,19 @@ export default function ImportExport() {
                     Esporta anagrafica clienti e listini prezzi
                   </p>
                   <div className="flex gap-2">
-                    <Button size="sm" variant="outline">
+                    <Button 
+                      size="sm" 
+                      variant="outline"
+                      onClick={() => handleExport('products', 'xlsx')}
+                    >
                       <FileSpreadsheet className="h-3 w-3 mr-1" />
                       Excel
                     </Button>
-                    <Button size="sm" variant="outline">
+                    <Button 
+                      size="sm" 
+                      variant="outline"
+                      onClick={() => handleExport('products', 'csv')}
+                    >
                       <FileText className="h-3 w-3 mr-1" />
                       CSV
                     </Button>
@@ -352,11 +410,19 @@ export default function ImportExport() {
                     Esporta richieste di quotazione e offerte
                   </p>
                   <div className="flex gap-2">
-                    <Button size="sm" variant="outline">
+                    <Button 
+                      size="sm" 
+                      variant="outline"
+                      onClick={() => handleExport('customers', 'xlsx')}
+                    >
                       <FileSpreadsheet className="h-3 w-3 mr-1" />
                       Excel
                     </Button>
-                    <Button size="sm" variant="outline">
+                    <Button 
+                      size="sm" 
+                      variant="outline"
+                      onClick={() => handleExport('customers', 'csv')}
+                    >
                       <FileText className="h-3 w-3 mr-1" />
                       CSV
                     </Button>
@@ -376,11 +442,19 @@ export default function ImportExport() {
                     Esporta tutte le equivalenze tra prodotti
                   </p>
                   <div className="flex gap-2">
-                    <Button size="sm" variant="outline">
+                    <Button 
+                      size="sm" 
+                      variant="outline"
+                      onClick={() => handleExport('rfq', 'xlsx')}
+                    >
                       <FileSpreadsheet className="h-3 w-3 mr-1" />
                       Excel
                     </Button>
-                    <Button size="sm" variant="outline">
+                    <Button 
+                      size="sm" 
+                      variant="outline"
+                      onClick={() => handleExport('rfq', 'csv')}
+                    >
                       <FileText className="h-3 w-3 mr-1" />
                       CSV
                     </Button>
@@ -399,7 +473,11 @@ export default function ImportExport() {
                   <p className="text-sm text-muted-foreground">
                     Esporta tutti i dati in formato template v3
                   </p>
-                  <Button size="sm" className="btn-primary w-full">
+                  <Button 
+                    size="sm" 
+                    className="btn-primary w-full"
+                    onClick={() => handleExport('complete', 'xlsx')}
+                  >
                     <Download className="h-3 w-3 mr-1" />
                     Scarica Tutto
                   </Button>
