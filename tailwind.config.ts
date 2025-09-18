@@ -19,6 +19,10 @@ export default {
         ring: "hsl(var(--ring))",
         background: "hsl(var(--background))",
         foreground: "hsl(var(--foreground))",
+        // Business Brand Colors
+        ocean: "hsl(var(--ocean))",
+        steel: "hsl(var(--steel))",
+        "nautical-teal": "hsl(var(--nautical-teal))",
         primary: {
           DEFAULT: "hsl(var(--primary))",
           foreground: "hsl(var(--primary-foreground))",
@@ -62,6 +66,16 @@ export default {
         lg: "var(--radius)",
         md: "calc(var(--radius) - 2px)",
         sm: "calc(var(--radius) - 4px)",
+      },
+      boxShadow: {
+        'card': 'var(--shadow-card)',
+        'elevated': 'var(--shadow-elevated)',
+        'focus': 'var(--shadow-focus)',
+      },
+      backgroundImage: {
+        'gradient-primary': 'var(--gradient-primary)',
+        'gradient-steel': 'var(--gradient-steel)',
+        'gradient-surface': 'var(--gradient-surface)',
       },
       keyframes: {
         "accordion-down": {
