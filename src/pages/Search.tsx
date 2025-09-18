@@ -81,9 +81,22 @@ export default function Search() {
 
   const handleSearch = async () => {
     setIsSearching(true);
-    // Simulate API call
+    
+    // Clear previous results first
+    setSearchResults([]);
+    
+    // Simulate API call with random results based on criteria
     setTimeout(() => {
-      setSearchResults(mockSearchResults);
+      // Filter mock results based on search criteria to simulate real search
+      const filteredResults = mockSearchResults.filter(result => {
+        if (searchCriteria.outer_diameter_mm) {
+          const odDiff = Math.abs(result.dimensional_match.od_diff_mm || 0);
+          if (odDiff > (searchCriteria.tolerance_od_mm || 1.0)) return false;
+        }
+        return true;
+      });
+      
+      setSearchResults(filteredResults);
       setIsSearching(false);
     }, 1000);
   };

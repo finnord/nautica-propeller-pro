@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -14,28 +14,14 @@ import {
 } from 'lucide-react';
 import { Product, ProductType, UnitOfMeasure } from '@/types';
 
-// Mock product data (in real app, this would come from Supabase)
-const mockProduct: Product = {
-  product_id: 'G-2847',
-  product_type: 'impeller',
-  name: 'Girante Standard 85mm',
-  internal_code: 'GS-085-NBR',
-  uom: 'pcs',
-  base_cost: 45.80,
-  gross_margin_pct: 35,
-  base_list_price: 70.46,
-  drawing_link_url: 'https://drawings.company.com/G-2847.pdf',
-  notes: 'Girante standard per pompe centrifughe marine. Realizzata in mescola NBR con rinforzi in fibra per maggiore durata.',
-  created_at: '2024-01-15T10:30:00Z',
-  updated_at: '2024-01-20T14:22:00Z'
-};
-
-export default function ProductEdit() {
-  const { id } = useParams();
+export default function ProductNew() {
   const navigate = useNavigate();
   
-  // Initialize form with product data
-  const [formData, setFormData] = useState<Partial<Product>>(mockProduct);
+  const [formData, setFormData] = useState<Partial<Product>>({
+    product_type: 'impeller',
+    uom: 'pcs',
+    gross_margin_pct: 35
+  });
   const [isSaving, setIsSaving] = useState(false);
 
   const handleSave = async () => {
@@ -44,7 +30,7 @@ export default function ProductEdit() {
     // Simulate API call
     setTimeout(() => {
       setIsSaving(false);
-      navigate(`/products/${id}`);
+      navigate('/products');
     }, 1000);
   };
 
@@ -70,20 +56,20 @@ export default function ProductEdit() {
             <Button 
               variant="outline" 
               size="sm"
-              onClick={() => navigate(`/products/${id}`)}
+              onClick={() => navigate('/products')}
             >
               <ArrowLeft className="h-4 w-4 mr-2" />
               Indietro
             </Button>
             <div>
-              <h1 className="text-heading">Modifica Prodotto</h1>
-              <p className="text-body">Aggiorna le informazioni del prodotto</p>
+              <h1 className="text-heading">Nuovo Prodotto</h1>
+              <p className="text-body">Crea un nuovo prodotto</p>
             </div>
           </div>
           <div className="flex gap-2">
             <Button 
               variant="outline"
-              onClick={() => navigate(`/products/${id}`)}
+              onClick={() => navigate('/products')}
             >
               Annulla
             </Button>
@@ -98,7 +84,7 @@ export default function ProductEdit() {
           </div>
         </div>
 
-        {/* Edit Form */}
+        {/* Create Form */}
         <Card className="card-elevated">
           <CardHeader>
             <CardTitle className="text-lg flex items-center gap-2">
@@ -116,7 +102,7 @@ export default function ProductEdit() {
                   value={formData.product_id || ''}
                   onChange={(e) => handleInputChange('product_id', e.target.value)}
                   className="input-business"
-                  disabled // Usually read-only
+                  placeholder="G-1234"
                 />
               </div>
               
@@ -147,6 +133,7 @@ export default function ProductEdit() {
                   value={formData.name || ''}
                   onChange={(e) => handleInputChange('name', e.target.value)}
                   className="input-business"
+                  placeholder="Girante Standard 85mm"
                 />
               </div>
               
@@ -157,6 +144,7 @@ export default function ProductEdit() {
                   value={formData.internal_code || ''}
                   onChange={(e) => handleInputChange('internal_code', e.target.value)}
                   className="input-business"
+                  placeholder="GS-085-NBR"
                 />
               </div>
             </div>
@@ -207,6 +195,7 @@ export default function ProductEdit() {
                     value={formData.base_cost || ''}
                     onChange={(e) => handleInputChange('base_cost', parseFloat(e.target.value) || 0)}
                     className="input-business"
+                    placeholder="45.80"
                   />
                 </div>
                 
@@ -220,6 +209,7 @@ export default function ProductEdit() {
                       value={formData.gross_margin_pct || ''}
                       onChange={(e) => handleInputChange('gross_margin_pct', parseFloat(e.target.value) || 0)}
                       className="input-business"
+                      placeholder="35"
                     />
                     <Button 
                       type="button" 

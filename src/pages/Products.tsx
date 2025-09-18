@@ -11,9 +11,13 @@ import {
   Ship, 
   Eye,
   Edit,
-  ExternalLink
+  ExternalLink,
+  Grid3X3,
+  List
 } from 'lucide-react';
 import { Product, ProductType } from '@/types';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table-view';
+import { useNavigate } from 'react-router-dom';
 
 // Mock data for demonstration
 const mockProducts: Product[] = [
@@ -86,8 +90,10 @@ const getProductTypeLabel = (type: ProductType) => {
 };
 
 export default function Products() {
+  const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedType, setSelectedType] = useState<ProductType | 'all'>('all');
+  const [viewMode, setViewMode] = useState<'cards' | 'table'>('cards');
 
   const filteredProducts = mockProducts.filter(product => {
     const matchesSearch = product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -108,10 +114,31 @@ export default function Products() {
             <h1 className="text-heading">Gestione Prodotti</h1>
             <p className="text-body">Giranti, bussole, kit e prodotti generici</p>
           </div>
-          <Button className="btn-primary">
-            <Plus className="h-4 w-4 mr-2" />
-            Nuovo Prodotto
-          </Button>
+          <div className="flex gap-2">
+            <div className="flex border rounded-md">
+              <Button
+                variant={viewMode === 'cards' ? 'default' : 'ghost'}
+                size="sm"
+                onClick={() => setViewMode('cards')}
+              >
+                <Grid3X3 className="h-4 w-4" />
+              </Button>
+              <Button
+                variant={viewMode === 'table' ? 'default' : 'ghost'}
+                size="sm"
+                onClick={() => setViewMode('table')}
+              >
+                <List className="h-4 w-4" />
+              </Button>
+            </div>
+            <Button 
+              className="btn-primary"
+              onClick={() => navigate('/products/new')}
+            >
+              <Plus className="h-4 w-4 mr-2" />
+              Nuovo Prodotto
+            </Button>
+          </div>
         </div>
 
         {/* Filters */}
@@ -166,91 +193,173 @@ export default function Products() {
           </CardContent>
         </Card>
 
-        {/* Products Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
-          {filteredProducts.map((product) => (
-            <Card key={product.product_id} className="card-interactive">
-              <CardHeader>
-                <div className="flex items-start justify-between">
-                  <div className="space-y-1">
-                    <CardTitle className="text-lg">{product.name}</CardTitle>
-                    <div className="flex items-center gap-2">
-                      <Badge 
-                        className={getProductTypeColor(product.product_type)}
-                      >
-                        {getProductTypeLabel(product.product_type)}
-                      </Badge>
-                      <span className="text-sm font-mono text-muted-foreground">
-                        {product.product_id}
-                      </span>
+        {/* Products Display */}
+        {viewMode === 'cards' ? (
+          <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+            {filteredProducts.map((product) => (
+              <Card key={product.product_id} className="card-interactive">
+                <CardHeader>
+                  <div className="flex items-start justify-between">
+                    <div className="space-y-1">
+                      <CardTitle className="text-lg">{product.name}</CardTitle>
+                      <div className="flex items-center gap-2">
+                        <Badge 
+                          className={getProductTypeColor(product.product_type)}
+                        >
+                          {getProductTypeLabel(product.product_type)}
+                        </Badge>
+                        <span className="text-sm font-mono text-muted-foreground">
+                          {product.product_id}
+                        </span>
+                      </div>
+                    </div>
+                    <Ship className="h-5 w-5 text-muted-foreground" />
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4 text-sm">
+                    <div>
+                      <p className="text-muted-foreground">Costo Base</p>
+                      <p className="font-semibold">€{product.base_cost.toFixed(2)}</p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground">Prezzo Lista</p>
+                      <p className="font-semibold">€{product.base_list_price?.toFixed(2) || 'N/D'}</p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground">Margine</p>
+                      <p className="font-semibold">{product.gross_margin_pct}%</p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground">UdM</p>
+                      <p className="font-semibold uppercase">{product.uom}</p>
                     </div>
                   </div>
-                  <Ship className="h-5 w-5 text-muted-foreground" />
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-2 gap-4 text-sm">
-                  <div>
-                    <p className="text-muted-foreground">Costo Base</p>
-                    <p className="font-semibold">€{product.base_cost.toFixed(2)}</p>
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground">Prezzo Lista</p>
-                    <p className="font-semibold">€{product.base_list_price?.toFixed(2) || 'N/D'}</p>
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground">Margine</p>
-                    <p className="font-semibold">{product.gross_margin_pct}%</p>
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground">UdM</p>
-                    <p className="font-semibold uppercase">{product.uom}</p>
-                  </div>
-                </div>
 
-                {product.internal_code && (
-                  <div className="text-sm">
-                    <p className="text-muted-foreground">Codice Interno</p>
-                    <p className="font-mono">{product.internal_code}</p>
-                  </div>
-                )}
-
-                {product.notes && (
-                  <div className="text-sm">
-                    <p className="text-muted-foreground">Note</p>
-                    <p className="text-xs leading-relaxed">{product.notes}</p>
-                  </div>
-                )}
-
-                <div className="flex justify-between items-center pt-4 border-t border-border">
-                  <div className="flex gap-2">
-                    <Button 
-                      size="sm" 
-                      variant="outline"
-                      onClick={() => window.location.href = `/products/${product.product_id}`}
-                    >
-                      <Eye className="h-3 w-3 mr-1" />
-                      Dettagli
-                    </Button>
-                    <Button 
-                      size="sm" 
-                      variant="outline"
-                      onClick={() => window.location.href = `/products/${product.product_id}/edit`}
-                    >
-                      <Edit className="h-3 w-3 mr-1" />
-                      Modifica
-                    </Button>
-                  </div>
-                  {product.drawing_link_url && (
-                    <Button size="sm" variant="ghost">
-                      <ExternalLink className="h-3 w-3" />
-                    </Button>
+                  {product.internal_code && (
+                    <div className="text-sm">
+                      <p className="text-muted-foreground">Codice Interno</p>
+                      <p className="font-mono">{product.internal_code}</p>
+                    </div>
                   )}
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+
+                  {product.notes && (
+                    <div className="text-sm">
+                      <p className="text-muted-foreground">Note</p>
+                      <p className="text-xs leading-relaxed">{product.notes}</p>
+                    </div>
+                  )}
+
+                  <div className="flex justify-between items-center pt-4 border-t border-border">
+                    <div className="flex gap-2">
+                      <Button 
+                        size="sm" 
+                        variant="outline"
+                        onClick={() => navigate(`/products/${product.product_id}`)}
+                      >
+                        <Eye className="h-3 w-3 mr-1" />
+                        Dettagli
+                      </Button>
+                      <Button 
+                        size="sm" 
+                        variant="outline"
+                        onClick={() => navigate(`/products/${product.product_id}/edit`)}
+                      >
+                        <Edit className="h-3 w-3 mr-1" />
+                        Modifica
+                      </Button>
+                    </div>
+                    {product.drawing_link_url && (
+                      <Button size="sm" variant="ghost">
+                        <ExternalLink className="h-3 w-3" />
+                      </Button>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        ) : (
+          <Card className="card-elevated">
+            <CardContent className="p-0">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Prodotto</TableHead>
+                    <TableHead>Tipo</TableHead>
+                    <TableHead>Codice</TableHead>
+                    <TableHead className="text-right">Costo</TableHead>
+                    <TableHead className="text-right">Prezzo</TableHead>
+                    <TableHead className="text-right">Margine</TableHead>
+                    <TableHead>UdM</TableHead>
+                    <TableHead className="text-right">Azioni</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredProducts.map((product) => (
+                    <TableRow key={product.product_id}>
+                      <TableCell>
+                        <div>
+                          <div className="font-medium">{product.name}</div>
+                          {product.internal_code && (
+                            <div className="text-sm text-muted-foreground font-mono">
+                              {product.internal_code}
+                            </div>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <Badge className={getProductTypeColor(product.product_type)}>
+                          {getProductTypeLabel(product.product_type)}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="font-mono text-sm">
+                        {product.product_id}
+                      </TableCell>
+                      <TableCell className="text-right font-semibold">
+                        €{product.base_cost.toFixed(2)}
+                      </TableCell>
+                      <TableCell className="text-right font-semibold">
+                        €{product.base_list_price?.toFixed(2) || 'N/D'}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {product.gross_margin_pct}%
+                      </TableCell>
+                      <TableCell className="uppercase">
+                        {product.uom}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex gap-2 justify-end">
+                          <Button 
+                            size="sm" 
+                            variant="outline"
+                            onClick={() => navigate(`/products/${product.product_id}`)}
+                          >
+                            <Eye className="h-3 w-3 mr-1" />
+                            Dettagli
+                          </Button>
+                          <Button 
+                            size="sm" 
+                            variant="outline"
+                            onClick={() => navigate(`/products/${product.product_id}/edit`)}
+                          >
+                            <Edit className="h-3 w-3 mr-1" />
+                            Modifica
+                          </Button>
+                          {product.drawing_link_url && (
+                            <Button size="sm" variant="ghost">
+                              <ExternalLink className="h-3 w-3" />
+                            </Button>
+                          )}
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        )}
 
         {filteredProducts.length === 0 && (
           <Card className="card-elevated">
@@ -260,7 +369,10 @@ export default function Products() {
               <p className="text-muted-foreground mb-4">
                 Prova a modificare i filtri di ricerca o aggiungi un nuovo prodotto.
               </p>
-              <Button className="btn-primary">
+              <Button 
+                className="btn-primary"
+                onClick={() => navigate('/products/new')}
+              >
                 <Plus className="h-4 w-4 mr-2" />
                 Aggiungi Prodotto
               </Button>

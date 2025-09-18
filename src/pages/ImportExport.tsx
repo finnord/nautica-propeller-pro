@@ -193,7 +193,7 @@ export default function ImportExport() {
                 <CardTitle className="text-lg">Carica File Excel</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="border-2 border-dashed border-border rounded-lg p-8 text-center">
+                <div className="border-2 border-dashed border-border rounded-lg p-8 text-center relative">
                   <Upload className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
                   <div className="space-y-2">
                     <p className="text-sm font-medium">Trascina il file Excel qui o clicca per selezionare</p>
@@ -204,6 +204,7 @@ export default function ImportExport() {
                     accept=".xlsx,.xls"
                     onChange={handleFileUpload}
                     className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                    onClick={(e) => e.stopPropagation()}
                   />
                 </div>
 
