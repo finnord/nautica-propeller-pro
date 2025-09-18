@@ -224,11 +224,19 @@ export default function Products() {
 
                 <div className="flex justify-between items-center pt-4 border-t border-border">
                   <div className="flex gap-2">
-                    <Button size="sm" variant="outline">
+                    <Button 
+                      size="sm" 
+                      variant="outline"
+                      onClick={() => window.location.href = `/products/${product.product_id}`}
+                    >
                       <Eye className="h-3 w-3 mr-1" />
                       Dettagli
                     </Button>
-                    <Button size="sm" variant="outline">
+                    <Button 
+                      size="sm" 
+                      variant="outline"
+                      onClick={() => window.location.href = `/products/${product.product_id}/edit`}
+                    >
                       <Edit className="h-3 w-3 mr-1" />
                       Modifica
                     </Button>
