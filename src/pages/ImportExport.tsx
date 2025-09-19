@@ -35,27 +35,42 @@ import { downloadTemplate, downloadExportData, downloadPriceListTemplate } from 
 import { PriceListConflictDialog } from '@/components/dialogs/PriceListConflictDialog';
 import { usePriceListImportValidation, type PriceListValidationResult, type PriceListImportRow, type ValidationLevel } from '@/hooks/usePriceListImportValidation';
 import { usePriceListImportUpsert, type PriceListUpsertResult, type PriceListConflictResolution, type ImportMode } from '@/hooks/usePriceListImportUpsert';
+import { useImpellerImportValidation, type ImpellerValidationResult, type ImpellerImportRow } from '@/hooks/useImpellerImportValidation';
+import { useImpellerImportUpsert, type ImpellerUpsertResult } from '@/hooks/useImpellerImportUpsert';
+import { useRubberCompoundImport, type RubberCompoundImportRow } from '@/hooks/useRubberCompoundImport';
+import { useBushingImport, type BushingImportRow } from '@/hooks/useBushingImport';
 import { supabase } from '@/integrations/supabase/client';
 import * as XLSX from 'xlsx';
 
 type ImportStatus = 'idle' | 'uploading' | 'validating' | 'preview' | 'conflicts' | 'importing' | 'completed' | 'error';
 type ImportStep = 'upload' | 'validate' | 'preview' | 'conflicts' | 'import' | 'complete';
+type ImportType = 'price_list' | 'complete';
 
 export default function ImportExport() {
   const [importStatus, setImportStatus] = useState<ImportStatus>('idle');
   const [importProgress, setImportProgress] = useState(0);
   const [importStep, setImportStep] = useState<ImportStep>('upload');
   const [importMode, setImportMode] = useState<ImportMode>('upsert');
+  const [importType, setImportType] = useState<ImportType>('price_list');
   const [validationResult, setValidationResult] = useState<PriceListValidationResult | null>(null);
+  const [impellerValidationResult, setImpellerValidationResult] = useState<ImpellerValidationResult | null>(null);
   const [importData, setImportData] = useState<PriceListImportRow[]>([]);
+  const [impellerData, setImpellerData] = useState<ImpellerImportRow[]>([]);
+  const [rubberCompoundData, setRubberCompoundData] = useState<RubberCompoundImportRow[]>([]);
+  const [bushingData, setBushingData] = useState<BushingImportRow[]>([]);
   const [file, setFile] = useState<File | null>(null);
   const [conflictResolutions, setConflictResolutions] = useState<Record<string, PriceListConflictResolution>>({});
   const [showConflictDialog, setShowConflictDialog] = useState(false);
   const [importResult, setImportResult] = useState<PriceListUpsertResult | null>(null);
+  const [impellerImportResult, setImpellerImportResult] = useState<ImpellerUpsertResult | null>(null);
   
   const { toast } = useToast();
   const { isValidating, validatePriceListImport } = usePriceListImportValidation();
   const { isImporting, upsertPriceListData, downloadImportLog } = usePriceListImportUpsert();
+  const { isValidating: isValidatingImpellers, validateImpellerImport } = useImpellerImportValidation();
+  const { isImporting: isImportingImpellers, upsertImpellerData } = useImpellerImportUpsert();
+  const { isImporting: isImportingCompounds, importRubberCompounds } = useRubberCompoundImport();
+  const { isImporting: isImportingBushings, importBushings } = useBushingImport();
 
   // Reset function
   const resetImport = () => {
@@ -63,10 +78,15 @@ export default function ImportExport() {
     setImportProgress(0);
     setImportStep('upload');
     setValidationResult(null);
+    setImpellerValidationResult(null);
     setImportData([]);
+    setImpellerData([]);
+    setRubberCompoundData([]);
+    setBushingData([]);
     setFile(null);
     setConflictResolutions({});
     setImportResult(null);
+    setImpellerImportResult(null);
     setShowConflictDialog(false);
   };
 
@@ -86,39 +106,82 @@ export default function ImportExport() {
       setImportStatus('validating');
       setImportProgress(30);
       
-      // Get the first sheet (price list data)
-      const sheetName = workbook.SheetNames[0];
-      const worksheet = workbook.Sheets[sheetName];
-      const jsonData = XLSX.utils.sheet_to_json(worksheet) as PriceListImportRow[];
+      // Detect import type based on sheet names
+      const sheetNames = workbook.SheetNames;
+      const isCompleteImport = sheetNames.includes('Products') && sheetNames.includes('ImpellerDims');
       
-      if (jsonData.length === 0) {
-        throw new Error('Il file Excel è vuoto o non contiene dati validi');
-      }
-
-      setImportData(jsonData);
-      setImportProgress(60);
-      
-      // Validate the data
-      const result = await validatePriceListImport(jsonData);
-      setValidationResult(result);
-      setImportProgress(100);
-      
-      // Determine next step based on validation
-      if (!result.canProceed) {
-        setImportStatus('error');
-        setImportStep('upload');
-        toast({
-          title: 'Errori Critici',
-          description: 'Il file contiene errori critici che bloccano l\'import. Correggi i dati e riprova.',
-          variant: 'destructive'
-        });
-      } else if (result.conflicts.length > 0) {
-        setImportStatus('conflicts');
-        setImportStep('conflicts');
-        setShowConflictDialog(true);
-      } else {
+      if (isCompleteImport) {
+        setImportType('complete');
+        
+        // Process Products sheet
+        if (sheetNames.includes('Products')) {
+          const productsSheet = workbook.Sheets['Products'];
+          const productsData = XLSX.utils.sheet_to_json(productsSheet) as ImpellerImportRow[];
+          setImpellerData(productsData);
+        }
+        
+        // Process RubberMix sheet
+        if (sheetNames.includes('RubberMix')) {
+          const rubberSheet = workbook.Sheets['RubberMix'];
+          const rubberData = XLSX.utils.sheet_to_json(rubberSheet) as RubberCompoundImportRow[];
+          setRubberCompoundData(rubberData);
+        }
+        
+        // Process Bushing sheet
+        if (sheetNames.includes('Bushing')) {
+          const bushingSheet = workbook.Sheets['Bushing'];
+          const bushingData = XLSX.utils.sheet_to_json(bushingSheet) as BushingImportRow[];
+          setBushingData(bushingData);
+        }
+        
+        setImportProgress(60);
+        
+        // Validate impeller data
+        if (impellerData.length > 0) {
+          const result = await validateImpellerImport(impellerData);
+          setImpellerValidationResult(result);
+        }
+        
+        setImportProgress(100);
         setImportStatus('preview');
         setImportStep('preview');
+        
+      } else {
+        // Traditional price list import
+        setImportType('price_list');
+        const sheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[sheetName];
+        const jsonData = XLSX.utils.sheet_to_json(worksheet) as PriceListImportRow[];
+        
+        if (jsonData.length === 0) {
+          throw new Error('Il file Excel è vuoto o non contiene dati validi');
+        }
+
+        setImportData(jsonData);
+        setImportProgress(60);
+        
+        // Validate the data
+        const result = await validatePriceListImport(jsonData);
+        setValidationResult(result);
+        setImportProgress(100);
+        
+        // Determine next step based on validation
+        if (!result.canProceed) {
+          setImportStatus('error');
+          setImportStep('upload');
+          toast({
+            title: 'Errori Critici',
+            description: 'Il file contiene errori critici che bloccano l\'import. Correggi i dati e riprova.',
+            variant: 'destructive'
+          });
+        } else if (result.conflicts.length > 0) {
+          setImportStatus('conflicts');
+          setImportStep('conflicts');
+          setShowConflictDialog(true);
+        } else {
+          setImportStatus('preview');
+          setImportStep('preview');
+        }
       }
       
     } catch (error) {
@@ -134,26 +197,54 @@ export default function ImportExport() {
   };
 
   const handleImport = async () => {
-    if (!validationResult) return;
-
     setImportStatus('importing');
     setImportStep('import');
     setImportProgress(0);
 
     try {
-      const result = await upsertPriceListData(importData, conflictResolutions, importMode);
-      setImportResult(result);
+      if (importType === 'price_list' && validationResult) {
+        const result = await upsertPriceListData(importData, conflictResolutions, importMode);
+        setImportResult(result);
+        
+        const hasErrors = result.errors.length > 0;
+        toast({
+          title: hasErrors ? 'Import Completato con Errori' : 'Import Completato',
+          description: `${result.inserted} inseriti, ${result.updated} aggiornati, ${result.skipped} saltati${hasErrors ? `, ${result.errors.length} errori` : ''}`,
+          variant: hasErrors ? 'destructive' : 'default'
+        });
+        
+      } else if (importType === 'complete') {
+        const results = [];
+        
+        // Import impellers
+        if (impellerData.length > 0) {
+          const impellerResult = await upsertImpellerData(impellerData, importMode);
+          setImpellerImportResult(impellerResult);
+          results.push(`Impellers: ${impellerResult.inserted} inseriti, ${impellerResult.updated} aggiornati`);
+        }
+        
+        // Import rubber compounds
+        if (rubberCompoundData.length > 0) {
+          const compoundResult = await importRubberCompounds(rubberCompoundData);
+          results.push(`Mescole: ${compoundResult.imported} inserite, ${compoundResult.updated} aggiornate`);
+        }
+        
+        // Import bushings
+        if (bushingData.length > 0) {
+          const bushingResult = await importBushings(bushingData);
+          results.push(`Bussole: ${bushingResult.imported} inserite, ${bushingResult.updated} aggiornate`);
+        }
+        
+        toast({
+          title: 'Import Completo Terminato',
+          description: results.join('. '),
+          variant: 'default'
+        });
+      }
+      
       setImportStatus('completed');
       setImportStep('complete');
       setImportProgress(100);
-      
-      const hasErrors = result.errors.length > 0;
-      
-      toast({
-        title: hasErrors ? 'Import Completato con Errori' : 'Import Completato',
-        description: `${result.inserted} inseriti, ${result.updated} aggiornati, ${result.skipped} saltati${hasErrors ? `, ${result.errors.length} errori` : ''}`,
-        variant: hasErrors ? 'destructive' : 'default'
-      });
       
     } catch (error) {
       console.error('Import error:', error);
@@ -184,12 +275,20 @@ export default function ImportExport() {
     setImportStep('preview');
   };
 
-  const handleDownloadTemplate = () => {
-    downloadPriceListTemplate();
-    toast({
-      title: "Template scaricato",
-      description: "Il template Excel per listini prezzi è stato scaricato con successo",
-    });
+  const handleDownloadTemplate = (type: 'price_list' | 'complete' = 'price_list') => {
+    if (type === 'complete') {
+      downloadTemplate();
+      toast({
+        title: "Template Completo scaricato",
+        description: "Il template Excel completo con tutti i fogli è stato scaricato con successo",
+      });
+    } else {
+      downloadPriceListTemplate();
+      toast({
+        title: "Template scaricato",
+        description: "Il template Excel per listini prezzi è stato scaricato con successo",
+      });
+    }
   };
 
   const handleExport = async (type: 'products' | 'customers' | 'rfq' | 'equivalences' | 'complete', format: 'xlsx' | 'csv' = 'xlsx') => {
@@ -319,16 +418,20 @@ export default function ImportExport() {
         {/* Header */}
         <div className="flex justify-between items-center">
           <div>
-            <h1 className="text-heading">Import/Export Listini Prezzi</h1>
-            <p className="text-body">Sistema intelligente per import ed export di listini prezzi con gestione UPSERT</p>
+          <h1 className="text-heading">Import/Export Database</h1>
+            <p className="text-body">Sistema completo per import/export di prodotti, listini prezzi, mescole e bussole</p>
           </div>
         </div>
 
         <Tabs defaultValue="import">
-          <TabsList className="grid w-full grid-cols-2">
+          <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="import" className="flex items-center gap-2">
               <Upload className="h-4 w-4" />
               Import Listini
+            </TabsTrigger>
+            <TabsTrigger value="complete-import" className="flex items-center gap-2">
+              <FileSpreadsheet className="h-4 w-4" />
+              Import Completo
             </TabsTrigger>
             <TabsTrigger value="export" className="flex items-center gap-2">
               <Download className="h-4 w-4" />
@@ -370,9 +473,13 @@ export default function ImportExport() {
                   </div>
                   
                   <div className="flex flex-wrap gap-3 pt-4 border-t">
-                    <Button onClick={handleDownloadTemplate} variant="outline">
+                    <Button onClick={() => handleDownloadTemplate('price_list')} variant="outline">
                       <Download className="h-4 w-4 mr-2" />
                       Scarica Template Listini
+                    </Button>
+                    <Button onClick={() => handleDownloadTemplate('complete')} variant="outline">
+                      <Download className="h-4 w-4 mr-2" />
+                      Scarica Template Completo
                     </Button>
                     <Button variant="outline" asChild>
                       <a href="#" target="_blank" rel="noopener noreferrer">
@@ -615,6 +722,278 @@ export default function ImportExport() {
                         <Archive className="h-4 w-4 mr-2" />
                         Scarica Log Dettagliato
                       </Button>
+                      <Button 
+                        onClick={resetImport}
+                        variant="outline"
+                      >
+                        <RefreshCw className="h-4 w-4 mr-2" />
+                        Nuovo Import
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+            </div>
+          </TabsContent>
+
+          <TabsContent value="complete-import" className="space-y-6">
+            <div className="grid gap-6">
+              {/* Complete Import Instructions */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <FileSpreadsheet className="h-5 w-5" />
+                    Import Database Completo
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="grid md:grid-cols-2 gap-4">
+                    <div className="space-y-3">
+                      <h4 className="font-medium">Funzionalità Multi-Entità:</h4>
+                      <ul className="list-disc list-inside text-sm text-muted-foreground space-y-1">
+                        <li><strong>Impellers:</strong> Fogli "Products" + "ImpellerDims"</li>
+                        <li><strong>Mescole Gomma:</strong> Foglio "RubberMix"</li>
+                        <li><strong>Bussole:</strong> Foglio "Bushing"</li>
+                        <li><strong>Equivalenze:</strong> Fogli "EquivalentImpeller/Bushing"</li>
+                        <li><strong>Clienti e RFQ:</strong> Fogli "Customers", "RFQ", "RFQLines"</li>
+                      </ul>
+                    </div>
+                    <div className="space-y-3">
+                      <h4 className="font-medium">Logica UPSERT Intelligente:</h4>
+                      <ul className="list-disc list-inside text-sm text-muted-foreground space-y-1">
+                        <li>Detect automatico delle entità dal file Excel</li>
+                        <li>Validazione specifica per ogni tipo di dato</li>
+                        <li>Inserimento o aggiornamento basato su codici esistenti</li>
+                        <li>Log dettagliato per ogni operazione</li>
+                      </ul>
+                    </div>
+                  </div>
+                  
+                  <div className="flex flex-wrap gap-3 pt-4 border-t">
+                    <Button onClick={() => handleDownloadTemplate('complete')} variant="outline">
+                      <Download className="h-4 w-4 mr-2" />
+                      Scarica Template Completo
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Complete Import Configuration */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Settings className="h-5 w-5" />
+                    Configurazione Import Completo
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    <div>
+                      <Label className="text-sm font-medium">Modalità Import</Label>
+                      <RadioGroup 
+                        value={importMode} 
+                        onValueChange={(value) => setImportMode(value as ImportMode)}
+                        className="flex flex-wrap gap-6 mt-2"
+                      >
+                        <div className="flex items-center space-x-2">
+                          <RadioGroupItem value="upsert" id="complete-mode-upsert" />
+                          <Label htmlFor="complete-mode-upsert">
+                            <span className="font-medium">UPSERT</span>
+                            <span className="block text-xs text-muted-foreground">Inserisce o aggiorna automaticamente</span>
+                          </Label>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <RadioGroupItem value="append" id="complete-mode-append" />
+                          <Label htmlFor="complete-mode-append">
+                            <span className="font-medium">APPEND</span>
+                            <span className="block text-xs text-muted-foreground">Solo nuovi record</span>
+                          </Label>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <RadioGroupItem value="update" id="complete-mode-update" />
+                          <Label htmlFor="complete-mode-update">
+                            <span className="font-medium">UPDATE</span>
+                            <span className="block text-xs text-muted-foreground">Solo record esistenti</span>
+                          </Label>
+                        </div>
+                      </RadioGroup>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Complete File Upload */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Upload className="h-5 w-5" />
+                    Caricamento File Excel Completo
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="border-2 border-dashed border-border rounded-lg p-8 text-center">
+                    <input
+                      type="file"
+                      accept=".xlsx,.xls"
+                      onChange={handleFileUpload}
+                      className="hidden"
+                      id="complete-file-upload"
+                      disabled={isValidatingImpellers || isImportingImpellers}
+                    />
+                    <label
+                      htmlFor="complete-file-upload"
+                      className="cursor-pointer flex flex-col items-center gap-2"
+                    >
+                      <div className="flex items-center gap-2 text-primary">
+                        <Upload className="h-8 w-8" />
+                        <span className="text-lg font-medium">
+                          {isValidatingImpellers ? 'Validazione in corso...' : 'Carica File Excel Multi-Sheet'}
+                        </span>
+                      </div>
+                      <p className="text-sm text-muted-foreground">
+                        File supportati: .xlsx, .xls con fogli multipli
+                      </p>
+                    </label>
+                  </div>
+
+                  {file && importType === 'complete' && (
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2 text-sm">
+                        <FileSpreadsheet className="h-4 w-4" />
+                        <span className="font-medium">{file.name}</span>
+                        <Badge variant="secondary">Multi-Sheet</Badge>
+                      </div>
+                      {importProgress > 0 && (
+                        <div className="space-y-2">
+                          <div className="flex justify-between text-sm">
+                            <span>Progresso import:</span>
+                            <span>{importProgress}%</span>
+                          </div>
+                          <Progress value={importProgress} className="h-2" />
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Complete Import Results Preview */}
+              {importType === 'complete' && importStatus === 'preview' && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <Eye className="h-5 w-5" />
+                      Anteprima Import Multi-Entità
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="grid gap-4">
+                      {impellerData.length > 0 && (
+                        <div className="border rounded-lg p-4">
+                          <h4 className="font-medium mb-2">Impellers ({impellerData.length} record)</h4>
+                          <div className="text-sm text-muted-foreground">
+                            Primi 3 record: {impellerData.slice(0, 3).map(i => i.name || i.product_id).join(', ')}
+                          </div>
+                          {impellerValidationResult && (
+                            <div className="mt-2 flex gap-2">
+                              <Badge variant={impellerValidationResult.canProceed ? "default" : "destructive"}>
+                                {impellerValidationResult.summary.valid}/{impellerValidationResult.summary.total} validi
+                              </Badge>
+                              {impellerValidationResult.summary.errors > 0 && (
+                                <Badge variant="destructive">{impellerValidationResult.summary.errors} errori</Badge>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      
+                      {rubberCompoundData.length > 0 && (
+                        <div className="border rounded-lg p-4">
+                          <h4 className="font-medium mb-2">Mescole Gomma ({rubberCompoundData.length} record)</h4>
+                          <div className="text-sm text-muted-foreground">
+                            Primi 3 record: {rubberCompoundData.slice(0, 3).map(r => r.mix_name || r.mix_code).join(', ')}
+                          </div>
+                        </div>
+                      )}
+
+                      {bushingData.length > 0 && (
+                        <div className="border rounded-lg p-4">
+                          <h4 className="font-medium mb-2">Bussole ({bushingData.length} record)</h4>
+                          <div className="text-sm text-muted-foreground">
+                            Primi 3 record: {bushingData.slice(0, 3).map(b => b.bushing_name || b.bushing_code).join(', ')}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="flex gap-3 pt-4 border-t">
+                      <Button 
+                        onClick={handleImport}
+                        disabled={isImportingImpellers || isImportingCompounds || isImportingBushings}
+                        className="flex items-center gap-2"
+                      >
+                        {(isImportingImpellers || isImportingCompounds || isImportingBushings) ? (
+                          <>
+                            <RefreshCw className="h-4 w-4 animate-spin" />
+                            Import in corso...
+                          </>
+                        ) : (
+                          <>
+                            <Plus className="h-4 w-4" />
+                            Avvia Import Completo
+                          </>
+                        )}
+                      </Button>
+                      <Button 
+                        onClick={resetImport}
+                        variant="outline"
+                      >
+                        <RefreshCw className="h-4 w-4 mr-2" />
+                        Reset
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Complete Import Completion */}
+              {importType === 'complete' && importStatus === 'completed' && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2 text-green-600">
+                      <CheckCircle className="h-5 w-5" />
+                      Import Completo Terminato
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="grid gap-4">
+                      {impellerImportResult && (
+                        <div className="border rounded-lg p-4">
+                          <h4 className="font-medium mb-2">Risultati Impellers</h4>
+                          <div className="grid grid-cols-3 gap-4 text-sm">
+                            <div>
+                              <span className="text-green-600 font-medium">{impellerImportResult.inserted}</span>
+                              <span className="text-muted-foreground"> inseriti</span>
+                            </div>
+                            <div>
+                              <span className="text-blue-600 font-medium">{impellerImportResult.updated}</span>
+                              <span className="text-muted-foreground"> aggiornati</span>
+                            </div>
+                            <div>
+                              <span className="text-orange-600 font-medium">{impellerImportResult.skipped}</span>
+                              <span className="text-muted-foreground"> saltati</span>
+                            </div>
+                          </div>
+                          {impellerImportResult.errors.length > 0 && (
+                            <div className="mt-2">
+                              <Badge variant="destructive">{impellerImportResult.errors.length} errori</Badge>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="flex gap-3 pt-4 border-t">
                       <Button 
                         onClick={resetImport}
                         variant="outline"
