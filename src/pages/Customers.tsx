@@ -194,7 +194,12 @@ export default function Customers() {
                     <div>
                       <p className="text-muted-foreground">Contatti</p>
                       <p className="font-semibold">
-                        {customer.contacts ? JSON.parse(customer.contacts).length : 0} contatto{customer.contacts && JSON.parse(customer.contacts).length !== 1 ? 'i' : ''}
+                        {(() => {
+                          if (!customer.contacts) return '0 contatti';
+                          const contacts = typeof customer.contacts === 'string' ? JSON.parse(customer.contacts) : customer.contacts;
+                          const count = Array.isArray(contacts) ? contacts.length : 0;
+                          return `${count} contatto${count !== 1 ? 'i' : ''}`;
+                        })()}
                       </p>
                     </div>
                   </div>
@@ -292,7 +297,12 @@ export default function Customers() {
                         }
                       </TableCell>
                       <TableCell>
-                        {customer.contacts ? JSON.parse(customer.contacts).length : 0} contatto{customer.contacts && JSON.parse(customer.contacts).length !== 1 ? 'i' : ''}
+                        {(() => {
+                          if (!customer.contacts) return '0 contatti';
+                          const contacts = typeof customer.contacts === 'string' ? JSON.parse(customer.contacts) : customer.contacts;
+                          const count = Array.isArray(contacts) ? contacts.length : 0;
+                          return `${count} contatto${count !== 1 ? 'i' : ''}`;
+                        })()}
                       </TableCell>
                       <TableCell>
                         {customer.website ? (
