@@ -1,42 +1,21 @@
-import { useState, useEffect } from 'react';
-import { AppLayout } from '@/components/layout/AppLayout';
-import { useKeyboardShortcutsContext } from '@/contexts/KeyboardShortcutsContext';
-import { Badge } from '@/components/ui/badge';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { 
-  Ship, 
-  Eye,
-  Edit,
-  ExternalLink,
-  Plus
-} from 'lucide-react';
-import { ProductType } from '@/types';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table-view';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { Plus, Search, Filter, Grid, List } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { AppLayout } from '@/components/layout/AppLayout';
 import { PageHeader } from '@/components/ui/page-header';
 import { ViewModeToggle } from '@/components/ui/view-mode-toggle';
-import { SearchFilterCard } from '@/components/ui/search-filter-card';
-import { StatusFilterButtons } from '@/components/ui/status-filter-buttons';
-import { ActionButtonGroup, ActionButton } from '@/components/ui/action-button-group';
-import { EmptyStateCard } from '@/components/ui/empty-state-card';
-import { useProducts } from '@/hooks/useProducts';
+import { TableView } from '@/components/ui/table-view';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
+import { useImpellers } from '@/hooks/useImpellers';
+import { ProductType } from '@/types';
 
-// Product type mapping for database values
-const getProductType = (materialType?: string): ProductType => {
-  // Simple mapping - can be enhanced based on actual data
-  if (materialType?.toLowerCase().includes('impeller') || materialType?.toLowerCase().includes('girante')) {
-    return 'impeller';
-  }
-  if (materialType?.toLowerCase().includes('bushing') || materialType?.toLowerCase().includes('bussola')) {
-    return 'bushing';
-  }
-  if (materialType?.toLowerCase().includes('kit')) {
-    return 'kit';
-  }
-  return 'impeller'; // Default to impeller for propellers
-};
-
+// Helper functions for product type handling
 const getProductTypeColor = (type: ProductType) => {
   switch (type) {
     case 'impeller':
@@ -65,301 +44,203 @@ const getProductTypeLabel = (type: ProductType) => {
 
 export default function Products() {
   const navigate = useNavigate();
-  const { registerShortcut, unregisterShortcut } = useKeyboardShortcutsContext();
-  const { products, loading, error } = useProducts();
+  const { impellers, loading, error } = useImpellers();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedType, setSelectedType] = useState<ProductType | 'all'>('all');
   const [viewMode, setViewMode] = useState<'cards' | 'table'>('cards');
 
-  const typeOptions = [
-    { value: 'all', label: 'Tutti' },
-    { value: 'impeller', label: 'Giranti' },
-    { value: 'bushing', label: 'Bussole' },
-    { value: 'kit', label: 'Kit' }
-  ];
-
-  const filteredProducts = products.filter(product => {
-    const productType = getProductType(product.material_type);
-    const matchesSearch = product.model.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         product.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         (product.description?.toLowerCase().includes(searchTerm.toLowerCase()) ?? false);
+  // Filter impellers based on search term and selected type
+  const filteredImpellers = impellers.filter(impeller => {
+    const matchesSearch = 
+      impeller.impeller_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      impeller.internal_code?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      impeller.notes?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      false;
     
-    const matchesType = selectedType === 'all' || productType === selectedType;
+    const matchesType = selectedType === 'all' || impeller.product_type === selectedType;
     
     return matchesSearch && matchesType;
   });
 
   // Register keyboard shortcuts
-  useEffect(() => {
-    const shortcuts = [
-      {
-        key: 'tab',
-        description: 'Cambia visualizzazione (cards/table)',
-        action: () => setViewMode(prev => prev === 'cards' ? 'table' : 'cards'),
-        category: 'view' as const
+  useKeyboardShortcuts([
+    {
+      key: 'v',
+      ctrlKey: true,
+      description: 'Cambia vista (card/tabella)',
+      action: () => setViewMode(viewMode === 'cards' ? 'table' : 'cards'),
+    },
+    {
+      key: 'f',
+      ctrlKey: true,
+      description: 'Focalizza ricerca',
+      action: () => document.getElementById('search-input')?.focus(),
+    },
+    {
+      key: 'n',
+      ctrlKey: true,
+      description: 'Nuova girante',
+      action: () => navigate('/impellers/new'),
+    },
+    {
+      key: 'r',
+      ctrlKey: true,
+      description: 'Reset filtri',
+      action: () => {
+        setSearchTerm('');
+        setSelectedType('all');
       },
-      {
-        key: 'k',
-        ctrlKey: true,
-        description: 'Focus ricerca',
-        action: () => {
-          const searchInput = document.querySelector('input[placeholder*="ricerca"]') as HTMLInputElement;
-          searchInput?.focus();
-        },
-        category: 'search' as const
-      },
-      {
-        key: 'n',
-        ctrlKey: true,
-        description: 'Nuovo prodotto',
-        action: () => navigate('/products/new'),
-        category: 'actions' as const
-      },
-      {
-        key: 'escape',
-        description: 'Reset filtri',
-        action: () => {
-          setSearchTerm('');
-          setSelectedType('all');
-        },
-        category: 'search' as const
-      }
-    ];
-
-    shortcuts.forEach(registerShortcut);
-
-    return () => {
-      shortcuts.forEach(shortcut => unregisterShortcut(shortcut.key));
-    };
-  }, [registerShortcut, unregisterShortcut, navigate]);
+    },
+  ]);
 
   return (
     <AppLayout>
-      <div className="space-y-6">
-        <PageHeader
-          title="Gestione Prodotti"
-          description="Giranti, bussole, kit e prodotti generici"
-          actions={
-            <div className="flex gap-2">
-              <ViewModeToggle 
-                viewMode={viewMode} 
-                onViewModeChange={setViewMode} 
-              />
-              <ActionButtonGroup
-                actions={[{
-                  icon: Plus,
-                  label: 'Nuovo Prodotto',
-                  onClick: () => navigate('/products/new'),
-                  variant: 'default'
-                }]}
+      <PageHeader
+        title="Giranti"
+        description="Gestisci il catalogo giranti con ricerca dimensionale e filtri avanzati"
+        action={
+          <Button onClick={() => navigate('/impellers/new')} className="gap-2">
+            <Plus className="w-4 h-4" />
+            Nuova Girante
+          </Button>
+        }
+      />
+
+      <div className="flex flex-col gap-6">
+        <div className="flex flex-col sm:flex-row gap-4">
+          <div className="flex-1">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
+              <Input
+                id="search-input"
+                placeholder="Cerca giranti per nome, codice interno o note..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-10"
               />
             </div>
-          }
-        />
+          </div>
+          <div className="flex gap-2">
+            <Select value={selectedType} onValueChange={(value) => setSelectedType(value as ProductType | 'all')}>
+              <SelectTrigger className="w-40">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Tutti i Tipi</SelectItem>
+                <SelectItem value="impeller">Giranti</SelectItem>
+                <SelectItem value="bushing">Bussole</SelectItem>
+                <SelectItem value="kit">Kit</SelectItem>
+              </SelectContent>
+            </Select>
+            <ViewModeToggle 
+              viewMode={viewMode} 
+              onViewModeChange={setViewMode}
+            />
+          </div>
+        </div>
 
-        <SearchFilterCard
-          searchTerm={searchTerm}
-          onSearchChange={setSearchTerm}
-          placeholder="Cerca per nome, codice prodotto o codice interno..."
-        >
-          <StatusFilterButtons
-            selectedStatus={selectedType}
-            onStatusChange={(status) => setSelectedType(status as ProductType | 'all')}
-            options={typeOptions}
-          />
-        </SearchFilterCard>
-
-        {/* Products Display */}
         {loading ? (
-          <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
             {[...Array(6)].map((_, i) => (
-              <Card key={i} className="card-interactive animate-fade-in">
+              <Card key={i}>
                 <CardHeader>
                   <Skeleton className="h-6 w-3/4" />
-                  <div className="flex gap-2 mt-2">
-                    <Skeleton className="h-5 w-16" />
-                    <Skeleton className="h-5 w-20" />
-                  </div>
+                  <Skeleton className="h-4 w-1/2" />
                 </CardHeader>
                 <CardContent>
-                  <div className="space-y-3">
-                    <Skeleton className="h-16 w-full" />
+                  <div className="space-y-2">
+                    <Skeleton className="h-4 w-full" />
                     <Skeleton className="h-4 w-2/3" />
-                    <Skeleton className="h-8 w-full" />
                   </div>
                 </CardContent>
               </Card>
             ))}
           </div>
-        ) : viewMode === 'cards' ? (
-          <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
-            {filteredProducts.map((product) => {
-              const productType = getProductType(product.material_type);
-              return (
-                <Card key={product.id} className="card-interactive animate-fade-in">
-                  <CardHeader>
-                    <div className="flex items-start justify-between">
-                      <div className="space-y-1">
-                        <CardTitle className="text-lg">{product.model}</CardTitle>
-                        <div className="flex items-center gap-2">
-                          <Badge 
-                            className={getProductTypeColor(productType)}
-                          >
-                            {getProductTypeLabel(productType)}
-                          </Badge>
-                          <span className="text-sm font-mono text-muted-foreground">
-                            {product.id.slice(0, 8)}...
-                          </span>
-                        </div>
-                      </div>
-                      <Ship className="h-5 w-5 text-muted-foreground" />
-                    </div>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="grid grid-cols-2 gap-4 text-sm">
-                      <div>
-                        <p className="text-muted-foreground">Costo Industriale</p>
-                        <p className="font-semibold">€{(product.base_cost || 0).toFixed(2)}</p>
-                      </div>
-                      <div>
-                        <p className="text-muted-foreground">Diametro</p>
-                        <p className="font-semibold">{product.diameter ? `${product.diameter}mm` : 'N/D'}</p>
-                      </div>
-                      <div>
-                        <p className="text-muted-foreground">Passo</p>
-                        <p className="font-semibold">{product.pitch ? `${product.pitch}mm` : 'N/D'}</p>
-                      </div>
-                      <div>
-                        <p className="text-muted-foreground">Pale</p>
-                        <p className="font-semibold">{product.blades || 'N/D'}</p>
-                      </div>
-                    </div>
-
-                    {product.material_type && (
-                      <div className="text-sm">
-                        <p className="text-muted-foreground">Materiale</p>
-                        <p className="font-mono">{product.material_type}</p>
-                      </div>
-                    )}
-
-                    {product.description && (
-                      <div className="text-sm">
-                        <p className="text-muted-foreground">Descrizione</p>
-                        <p className="text-xs leading-relaxed">{product.description}</p>
-                      </div>
-                    )}
-
-                    <div className="flex justify-between items-center pt-4 border-t border-border">
-                      <ActionButtonGroup
-                        actions={[
-                          {
-                            icon: Eye,
-                            label: 'Dettagli',
-                            onClick: () => navigate(`/products/${product.id}`),
-                            variant: 'outline'
-                          },
-                          {
-                            icon: Edit,
-                            label: 'Modifica',
-                            onClick: () => navigate(`/products/${product.id}/edit`),
-                            variant: 'outline'
-                          }
-                        ]}
-                      />
-                    </div>
-                  </CardContent>
-                </Card>
-              );
-            })}
-          </div>
-        ) : (
-          <Card className="card-elevated animate-fade-in">
-            <CardContent className="p-0">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Prodotto</TableHead>
-                    <TableHead>Tipo</TableHead>
-                    <TableHead>Codice</TableHead>
-                    <TableHead className="text-right">Costo</TableHead>
-                    <TableHead className="text-right">Diametro</TableHead>
-                    <TableHead className="text-right">Passo</TableHead>
-                    <TableHead>Pale</TableHead>
-                    <TableHead className="text-right">Azioni</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredProducts.map((product) => {
-                    const productType = getProductType(product.material_type);
-                    return (
-                      <TableRow key={product.id} className="animate-fade-in">
-                        <TableCell>
-                          <div>
-                            <div className="font-medium">{product.model}</div>
-                            {product.description && (
-                              <div className="text-sm text-muted-foreground">
-                                {product.description.substring(0, 50)}...
-                              </div>
-                            )}
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <Badge className={getProductTypeColor(productType)}>
-                            {getProductTypeLabel(productType)}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="font-mono text-sm">
-                          {product.id.slice(0, 8)}...
-                        </TableCell>
-                        <TableCell className="text-right font-semibold">
-                          €{(product.base_cost || 0).toFixed(2)}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          {product.diameter ? `${product.diameter}mm` : 'N/D'}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          {product.pitch ? `${product.pitch}mm` : 'N/D'}
-                        </TableCell>
-                        <TableCell>
-                          {product.blades || 'N/D'}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <ActionButtonGroup
-                            actions={[
-                              {
-                                icon: Eye,
-                                label: 'Dettagli',
-                                onClick: () => navigate(`/products/${product.id}`),
-                                variant: 'outline'
-                              },
-                              {
-                                icon: Edit,
-                                label: 'Modifica',
-                                onClick: () => navigate(`/products/${product.id}/edit`),
-                                variant: 'outline'
-                              }
-                            ]}
-                          />
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
+        ) : filteredImpellers.length === 0 ? (
+          <Card>
+            <CardContent className="flex flex-col items-center justify-center py-12">
+              <h3 className="text-lg font-semibold mb-2">Nessuna girante trovata</h3>
+              <p className="text-muted-foreground mb-4">
+                Non ci sono giranti che corrispondono ai criteri di ricerca.
+              </p>
+              <Button onClick={() => navigate('/impellers/new')} className="gap-2">
+                <Plus className="w-4 h-4" />
+                Crea Prima Girante
+              </Button>
             </CardContent>
           </Card>
-        )}
-
-        {filteredProducts.length === 0 && (
-          <EmptyStateCard
-            icon={Ship}
-            title="Nessun prodotto trovato"
-            description="Prova a modificare i filtri di ricerca o aggiungi un nuovo prodotto."
-            actionButton={{
-              label: "Aggiungi Prodotto",
-              onClick: () => navigate('/products/new'),
-              icon: Plus
-            }}
+        ) : viewMode === 'cards' ? (
+          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+            {filteredImpellers.map((impeller) => (
+              <Card 
+                key={impeller.id} 
+                className="cursor-pointer hover:shadow-md transition-shadow"
+                onClick={() => navigate(`/impellers/${impeller.id}`)}
+              >
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="text-lg">{impeller.impeller_name}</CardTitle>
+                    <Badge 
+                      variant="outline" 
+                      className={getProductTypeColor(impeller.product_type)}
+                    >
+                      {getProductTypeLabel(impeller.product_type)}
+                    </Badge>
+                  </div>
+                  <CardDescription>
+                    {impeller.internal_code || 'Codice non specificato'}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-2 text-sm">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <span className="text-muted-foreground">Ø Esterno:</span>
+                        <div className="font-medium">{impeller.outer_diameter_mm ? `${impeller.outer_diameter_mm}mm` : 'N/A'}</div>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground">Altezza:</span>
+                        <div className="font-medium">{impeller.height_mm ? `${impeller.height_mm}mm` : 'N/A'}</div>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <span className="text-muted-foreground">Alette:</span>
+                        <div className="font-medium">{impeller.blade_count || 'N/A'}</div>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground">Volume:</span>
+                        <div className="font-medium">{impeller.rubber_volume_cm3}cm³</div>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <span className="text-muted-foreground">Mescola:</span>
+                        <div className="font-medium text-xs">{(impeller.rubber_compound as any)?.compound_code || 'N/A'}</div>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground">Stato:</span>
+                        <div className="font-medium capitalize">{impeller.status}</div>
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        ) : (
+          <TableView
+            columns={[
+              { header: 'Nome', accessor: 'impeller_name' },
+              { header: 'Codice', accessor: 'internal_code' },
+              { header: 'Ø Esterno (mm)', accessor: 'outer_diameter_mm' },
+              { header: 'Altezza (mm)', accessor: 'height_mm' },
+              { header: 'Alette', accessor: 'blade_count' },
+              { header: 'Volume (cm³)', accessor: 'rubber_volume_cm3' },
+              { header: 'Stato', accessor: 'status', render: (value) => <span className="capitalize">{value}</span> },
+            ]}
+            data={filteredImpellers}
+            onRowClick={(impeller) => navigate(`/impellers/${impeller.id}`)}
           />
         )}
       </div>

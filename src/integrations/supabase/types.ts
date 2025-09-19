@@ -72,6 +72,51 @@ export type Database = {
           },
         ]
       }
+      bushings: {
+        Row: {
+          bushing_code: string
+          created_at: string
+          drawing_link_url: string | null
+          id: string
+          indicative_cost: number | null
+          inner_diameter_mm: number | null
+          length_mm: number | null
+          material: string
+          notes: string | null
+          outer_diameter_mm: number | null
+          shaft_profile: string | null
+          updated_at: string
+        }
+        Insert: {
+          bushing_code: string
+          created_at?: string
+          drawing_link_url?: string | null
+          id?: string
+          indicative_cost?: number | null
+          inner_diameter_mm?: number | null
+          length_mm?: number | null
+          material: string
+          notes?: string | null
+          outer_diameter_mm?: number | null
+          shaft_profile?: string | null
+          updated_at?: string
+        }
+        Update: {
+          bushing_code?: string
+          created_at?: string
+          drawing_link_url?: string | null
+          id?: string
+          indicative_cost?: number | null
+          inner_diameter_mm?: number | null
+          length_mm?: number | null
+          material?: string
+          notes?: string | null
+          outer_diameter_mm?: number | null
+          shaft_profile?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       changelog: {
         Row: {
           action: string
@@ -333,6 +378,93 @@ export type Database = {
           },
         ]
       }
+      impellers: {
+        Row: {
+          base_cost: number | null
+          base_list_price: number | null
+          blade_count: number | null
+          blade_thickness_base_mm: number | null
+          bushing_id: string | null
+          created_at: string
+          drawing_link_url: string | null
+          gross_margin_pct: number | null
+          height_mm: number | null
+          hub_diameter_mm: number | null
+          id: string
+          impeller_name: string
+          inner_diameter_mm: number | null
+          internal_code: string | null
+          notes: string | null
+          outer_diameter_mm: number | null
+          product_type: string
+          rubber_compound_id: string | null
+          rubber_volume_cm3: number
+          status: string | null
+          updated_at: string
+        }
+        Insert: {
+          base_cost?: number | null
+          base_list_price?: number | null
+          blade_count?: number | null
+          blade_thickness_base_mm?: number | null
+          bushing_id?: string | null
+          created_at?: string
+          drawing_link_url?: string | null
+          gross_margin_pct?: number | null
+          height_mm?: number | null
+          hub_diameter_mm?: number | null
+          id?: string
+          impeller_name: string
+          inner_diameter_mm?: number | null
+          internal_code?: string | null
+          notes?: string | null
+          outer_diameter_mm?: number | null
+          product_type?: string
+          rubber_compound_id?: string | null
+          rubber_volume_cm3: number
+          status?: string | null
+          updated_at?: string
+        }
+        Update: {
+          base_cost?: number | null
+          base_list_price?: number | null
+          blade_count?: number | null
+          blade_thickness_base_mm?: number | null
+          bushing_id?: string | null
+          created_at?: string
+          drawing_link_url?: string | null
+          gross_margin_pct?: number | null
+          height_mm?: number | null
+          hub_diameter_mm?: number | null
+          id?: string
+          impeller_name?: string
+          inner_diameter_mm?: number | null
+          internal_code?: string | null
+          notes?: string | null
+          outer_diameter_mm?: number | null
+          product_type?: string
+          rubber_compound_id?: string | null
+          rubber_volume_cm3?: number
+          status?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "impellers_bushing_id_fkey"
+            columns: ["bushing_id"]
+            isOneToOne: false
+            referencedRelation: "bushings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "impellers_rubber_compound_id_fkey"
+            columns: ["rubber_compound_id"]
+            isOneToOne: false
+            referencedRelation: "rubber_compounds"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       price_list_items: {
         Row: {
           created_at: string
@@ -580,12 +712,81 @@ export type Database = {
           },
         ]
       }
+      rubber_compounds: {
+        Row: {
+          base_polymer: string
+          cef_internal_code: string | null
+          compound_code: string
+          compound_name: string
+          created_at: string
+          density_g_cm3: number
+          id: string
+          material_cost_per_kg: number | null
+          notes: string | null
+          supplier_name: string | null
+          updated_at: string
+        }
+        Insert: {
+          base_polymer: string
+          cef_internal_code?: string | null
+          compound_code: string
+          compound_name: string
+          created_at?: string
+          density_g_cm3: number
+          id?: string
+          material_cost_per_kg?: number | null
+          notes?: string | null
+          supplier_name?: string | null
+          updated_at?: string
+        }
+        Update: {
+          base_polymer?: string
+          cef_internal_code?: string | null
+          compound_code?: string
+          compound_name?: string
+          created_at?: string
+          density_g_cm3?: number
+          id?: string
+          material_cost_per_kg?: number | null
+          notes?: string | null
+          supplier_name?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      calculate_impeller_match_score: {
+        Args: {
+          compare_blade_count: number
+          compare_height: number
+          compare_hub_diameter: number
+          compare_inner_diameter: number
+          compare_outer_diameter: number
+          target_blade_count: number
+          target_height: number
+          target_hub_diameter: number
+          target_inner_diameter: number
+          target_outer_diameter: number
+          tolerance_blade_count?: number
+          tolerance_height_mm?: number
+          tolerance_hub_mm?: number
+          tolerance_id_mm?: number
+          tolerance_od_mm?: number
+        }
+        Returns: number
+      }
+      calculate_material_cost: {
+        Args: { cost_per_kg: number; density_g_cm3: number; volume_cm3: number }
+        Returns: number
+      }
+      calculate_rubber_weight: {
+        Args: { density_g_cm3: number; volume_cm3: number }
+        Returns: number
+      }
     }
     Enums: {
       [_ in never]: never

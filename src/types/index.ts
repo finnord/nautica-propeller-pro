@@ -1,4 +1,4 @@
-// Core domain types for Nautical BU Management System
+// Core domain types for Impeller Management System
 
 export type ProductType = 'impeller' | 'bushing' | 'kit' | 'generic';
 export type UnitOfMeasure = 'pcs' | 'set' | 'kg' | 'm' | 'other';
@@ -6,57 +6,113 @@ export type Currency = 'EUR' | 'USD';
 export type MatchType = 'full' | 'dimensional' | 'form-fit' | 'partial';
 export type RFQStatus = 'open' | 'quoted' | 'won' | 'lost' | 'on_hold';
 export type PricingMethod = 'margin_percent' | 'margin_euro' | 'target_price';
+export type MaterialType = 'acciaio' | 'termoplastico' | 'termoindurente';
+export type PolymerType = 'NBR' | 'EPDM' | 'CR' | 'other';
+export type ShaftProfile = 'D-shaft' | 'cone' | 'spline' | 'keyed' | 'other';
 
-// Core Product Entity
-export interface Product {
-  product_id: string;
-  product_type: ProductType;
-  name: string;
-  internal_code?: string;
-  uom: UnitOfMeasure;
-  base_cost: number; // Industrial cost + overhead
-  gross_margin_pct?: number;
-  base_list_price?: number;
+// Rubber Compound (Mescola Gomma)
+export interface RubberCompound {
+  id: string;
+  compound_code: string;
+  compound_name: string;
+  base_polymer: PolymerType;
+  density_g_cm3: number;
+  material_cost_per_kg?: number;
+  supplier_name?: string;
+  cef_internal_code?: string;
+  notes?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+// Bushing (Bussola)
+export interface Bushing {
+  id: string;
+  bushing_code: string;
+  material: MaterialType;
+  shaft_profile?: ShaftProfile;
+  inner_diameter_mm?: number;
+  outer_diameter_mm?: number;
+  length_mm?: number;
+  indicative_cost?: number;
   drawing_link_url?: string;
   notes?: string;
   created_at: string;
   updated_at: string;
 }
 
-// Impeller-specific dimensions
-export interface ImpellerDims {
-  product_id: string; // FK to Product
+// Impeller (Girante)
+export interface Impeller {
+  id: string;
+  impeller_name: string;
+  internal_code?: string;
+  product_type: ProductType;
+  
+  // Dimensioni specifiche
   height_mm?: number;
   outer_diameter_mm?: number;
   inner_diameter_mm?: number;
   hub_diameter_mm?: number;
   blade_count?: number;
   blade_thickness_base_mm?: number;
-  bushing_code?: string; // FK to Bushing
-  rubber_mix_code?: string; // FK to RubberMix
-  rubber_volume_cm3: number; // REQUIRED
-  shaft_profile_key?: string; // D-shaft, cone, spline, etc.
+  
+  // Volume e materiali
+  rubber_volume_cm3: number;
+  rubber_compound_id?: string;
+  bushing_id?: string;
+  
+  // Costi
+  base_cost: number;
+  gross_margin_pct?: number;
+  base_list_price?: number;
+  
+  // Altri dettagli
   drawing_link_url?: string;
+  notes?: string;
+  status: 'active' | 'inactive' | 'obsolete';
+  
+  created_at: string;
+  updated_at: string;
+  
+  // Relations (populated when joining)
+  rubber_compound?: RubberCompound;
+  bushing?: Bushing;
 }
 
-// Rubber compound specifications
-export interface RubberMix {
-  mix_code: string; // PK
-  base_polymer: string; // NBR, EPDM, CR, etc.
+// Calcolo peso e costo gomma
+export interface RubberCalculation {
+  volume_cm3: number;
   density_g_cm3: number;
-  material_price_per_kg?: number;
-  supplier_name?: string;
-  notes?: string;
+  weight_g: number;
+  weight_kg: number;
+  material_cost_per_kg?: number;
+  total_material_cost?: number;
 }
 
-// Bushing specifications
-export interface Bushing {
-  bushing_code: string; // PK
-  material: string; // brass, plastic, steel, etc.
-  indicative_cost?: number; // Never used in pricing
-  shaft_profile_key?: string;
-  drawing_link_url?: string;
-  notes?: string;
+// Criteri di ricerca per similarità
+export interface ImpellerSearchCriteria {
+  outer_diameter_mm?: number;
+  inner_diameter_mm?: number;
+  height_mm?: number;
+  hub_diameter_mm?: number;
+  blade_count?: number;
+  tolerance_od_mm?: number;
+  tolerance_id_mm?: number;
+  tolerance_height_mm?: number;
+  tolerance_hub_mm?: number;
+  tolerance_blade_count?: number;
+}
+
+// Risultato ricerca con match score
+export interface ImpellerSearchResult extends Impeller {
+  match_score: number; // 0-100
+  dimensional_differences: {
+    od_diff_mm?: number;
+    id_diff_mm?: number;
+    height_diff_mm?: number;
+    hub_diff_mm?: number;
+    blade_count_diff?: number;
+  };
 }
 
 // Customer information
@@ -168,16 +224,17 @@ export interface ImpellerSearchCriteria {
   tolerance_blade_count?: number;
 }
 
-export interface ImpellerSearchResult extends Product {
-  impeller_dims?: ImpellerDims;
-  rubber_mix?: RubberMix;
-  bushing?: Bushing;
-  dimensional_match: {
-    od_diff_mm?: number;
-    id_diff_mm?: number;
-    height_diff_mm?: number;
-    hub_diff_mm?: number;
-    blade_count_diff?: number;
-  };
-  match_score: number; // 0-100
+// Legacy types compatibility (da rimuovere gradualmente)
+export interface Product {
+  id: string;
+  model: string;
+  material_type?: string;
+  diameter?: number;
+  pitch?: number;
+  blades?: number;
+  base_cost?: number;
+  description?: string;
+  status?: string;
+  created_at: string;
+  updated_at: string;
 }
