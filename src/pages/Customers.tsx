@@ -30,6 +30,11 @@ export default function Customers() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [showNewCustomerDialog, setShowNewCustomerDialog] = useState(false);
+  
+  // Debug: Log when the dialog state changes
+  useEffect(() => {
+    console.log('showNewCustomerDialog state changed to:', showNewCustomerDialog);
+  }, [showNewCustomerDialog]);
 
   // Load customers from database
   const loadCustomers = async () => {
@@ -126,7 +131,12 @@ export default function Customers() {
               actions={[{
                 icon: Plus,
                 label: 'Nuovo Cliente',
-                onClick: () => setShowNewCustomerDialog(true),
+                onClick: () => {
+                  console.log('Nuovo Cliente button clicked!');
+                  console.log('Current showNewCustomerDialog state:', showNewCustomerDialog);
+                  setShowNewCustomerDialog(true);
+                  console.log('setShowNewCustomerDialog(true) called');
+                },
                 variant: 'default'
               }]}
             />
@@ -334,17 +344,23 @@ export default function Customers() {
             icon={Users}
             title="Nessun cliente trovato"
             description="Prova a modificare i criteri di ricerca o aggiungi un nuovo cliente."
-            actionButton={{
-              label: "Aggiungi Cliente",
-              onClick: () => setShowNewCustomerDialog(true),
-              icon: Plus
-            }}
+              actionButton={{
+                label: "Aggiungi Cliente",
+                onClick: () => {
+                  console.log('Empty state "Aggiungi Cliente" button clicked!');
+                  setShowNewCustomerDialog(true);
+                },
+                icon: Plus
+              }}
           />
         )}
         
         <NewCustomerDialog 
           open={showNewCustomerDialog}
-          onOpenChange={setShowNewCustomerDialog}
+          onOpenChange={(open) => {
+            console.log('NewCustomerDialog onOpenChange called with:', open);
+            setShowNewCustomerDialog(open);
+          }}
           onCustomerCreated={loadCustomers}
         />
       </div>
