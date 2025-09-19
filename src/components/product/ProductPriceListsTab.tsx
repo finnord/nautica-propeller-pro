@@ -4,10 +4,14 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { MetricCard } from '@/components/ui/metric-card';
 
-import { CalendarDays, Euro, TrendingUp, Users, Plus, BarChart3 } from 'lucide-react';
+import { CalendarDays, Euro, TrendingUp, Users, Plus, BarChart3, GitCompare, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { it } from 'date-fns/locale';
+import { PriceComparisonView } from './PriceComparisonView';
 
 interface PriceListItem {
   id: string;
@@ -18,6 +22,7 @@ interface PriceListItem {
     valid_to: string | null;
     currency: string;
     customer: {
+      id: string;
       name: string;
     };
   };
@@ -28,13 +33,24 @@ interface PriceListItem {
   min_quantity: number;
 }
 
+interface ProductBasicInfo {
+  id: string;
+  model: string;
+  material_type: string | null;
+  diameter: number | null;
+  pitch: number | null;
+}
+
 interface ProductPriceListsTabProps {
   productId: string;
 }
 
 export const ProductPriceListsTab = ({ productId }: ProductPriceListsTabProps) => {
   const [priceListItems, setPriceListItems] = useState<PriceListItem[]>([]);
+  const [productInfo, setProductInfo] = useState<ProductBasicInfo | null>(null);
   const [loading, setLoading] = useState(true);
+  const [showComparison, setShowComparison] = useState(false);
+  const [selectedCustomers, setSelectedCustomers] = useState<string[]>([]);
 
   useEffect(() => {
     fetchPriceListItems();
@@ -42,7 +58,8 @@ export const ProductPriceListsTab = ({ productId }: ProductPriceListsTabProps) =
 
   const fetchPriceListItems = async () => {
     try {
-      const { data, error } = await supabase
+      // Fetch price list items
+      const { data: priceData, error: priceError } = await supabase
         .from('price_list_items')
         .select(`
           id,
@@ -58,16 +75,28 @@ export const ProductPriceListsTab = ({ productId }: ProductPriceListsTabProps) =
             valid_to,
             currency,
             customer:customers (
+              id,
               name
             )
           )
         `)
         .eq('propeller_id', productId);
 
-      if (error) throw error;
-      setPriceListItems(data || []);
+      if (priceError) throw priceError;
+      setPriceListItems(priceData || []);
+
+      // Fetch product basic info
+      const { data: productData, error: productError } = await supabase
+        .from('propellers')
+        .select('id, model, material_type, diameter, pitch')
+        .eq('id', productId)
+        .single();
+
+      if (productError) throw productError;
+      setProductInfo(productData);
+
     } catch (error) {
-      console.error('Error fetching price list items:', error);
+      console.error('Error fetching data:', error);
     } finally {
       setLoading(false);
     }
@@ -117,62 +146,121 @@ export const ProductPriceListsTab = ({ productId }: ProductPriceListsTabProps) =
     );
   }
 
-  const averagePrice = priceListItems.reduce((sum, item) => sum + item.unit_price, 0) / priceListItems.length;
-  const priceRange = {
-    min: Math.min(...priceListItems.map(item => item.unit_price)),
-    max: Math.max(...priceListItems.map(item => item.unit_price))
+  const validPriceListItems = priceListItems.filter(item => {
+    const validity = getValidityStatus(item.price_list.valid_to);
+    return validity.status !== 'expired';
+  });
+
+  const averagePrice = validPriceListItems.length > 0 
+    ? validPriceListItems.reduce((sum, item) => sum + item.unit_price, 0) / validPriceListItems.length 
+    : 0;
+  
+  const priceRange = validPriceListItems.length > 0 ? {
+    min: Math.min(...validPriceListItems.map(item => item.unit_price)),
+    max: Math.max(...validPriceListItems.map(item => item.unit_price))
+  } : { min: 0, max: 0 };
+
+  const priceVariation = validPriceListItems.length > 0 && averagePrice > 0
+    ? ((priceRange.max - priceRange.min) / averagePrice) * 100
+    : 0;
+
+  const uniqueCustomers = [...new Set(priceListItems.map(item => item.price_list.customer.id))];
+
+  const getComparisonAnalysis = () => {
+    if (validPriceListItems.length === 0) return null;
+    
+    const sortedPrices = validPriceListItems.map(item => item.unit_price).sort((a, b) => a - b);
+    const median = sortedPrices[Math.floor(sortedPrices.length / 2)];
+    
+    return {
+      median,
+      standardDeviation: Math.sqrt(
+        validPriceListItems.reduce((sum, item) => 
+          sum + Math.pow(item.unit_price - averagePrice, 2), 0
+        ) / validPriceListItems.length
+      ),
+      competitivePosition: averagePrice > median ? 'above' : averagePrice < median ? 'below' : 'at',
+    };
   };
+
+  const analysis = getComparisonAnalysis();
 
   return (
     <div className="space-y-6">
-      {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center space-x-2">
-              <Users className="h-4 w-4 text-muted-foreground" />
-              <div>
-                <p className="text-sm font-medium">Listini attivi</p>
-                <p className="text-2xl font-bold">{priceListItems.length}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+      {/* Enhanced Summary Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <MetricCard
+          title="Listini attivi"
+          value={validPriceListItems.length}
+          description={`${priceListItems.length - validPriceListItems.length} scaduti`}
+          icon={<Users className="h-4 w-4" />}
+          trend={validPriceListItems.length > 0 ? {
+            value: Math.round((validPriceListItems.length / Math.max(priceListItems.length, 1)) * 100),
+            label: "attivi",
+            direction: validPriceListItems.length === priceListItems.length ? 'up' : 'down'
+          } : undefined}
+        />
 
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center space-x-2">
-              <Euro className="h-4 w-4 text-muted-foreground" />
-              <div>
-                <p className="text-sm font-medium">Prezzo medio</p>
-                <p className="text-2xl font-bold">€{averagePrice.toFixed(2)}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+        <MetricCard
+          title="Prezzo medio"
+          value={`€${averagePrice.toFixed(2)}`}
+          description={analysis ? `Mediana: €${analysis.median.toFixed(2)}` : 'Nessun dato'}
+          icon={<Euro className="h-4 w-4" />}
+          trend={analysis ? {
+            value: Math.round(((averagePrice - analysis.median) / analysis.median) * 100),
+            label: analysis.competitivePosition === 'above' ? 'sopra mediana' : 
+                   analysis.competitivePosition === 'below' ? 'sotto mediana' : 'in linea',
+            direction: analysis.competitivePosition === 'above' ? 'up' : 
+                      analysis.competitivePosition === 'below' ? 'down' : 'neutral'
+          } : undefined}
+        />
 
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center space-x-2">
-              <TrendingUp className="h-4 w-4 text-muted-foreground" />
-              <div>
-                <p className="text-sm font-medium">Range prezzi</p>
-                <p className="text-xl font-bold">€{priceRange.min.toFixed(2)} - €{priceRange.max.toFixed(2)}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+        <MetricCard
+          title="Variazione prezzi"
+          value={`${priceVariation.toFixed(1)}%`}
+          description={priceVariation > 20 ? 'Alta variabilità' : priceVariation > 10 ? 'Media variabilità' : 'Bassa variabilità'}
+          icon={<TrendingUp className="h-4 w-4" />}
+          trend={{
+            value: Math.round(priceVariation),
+            label: "variazione",
+            direction: priceVariation > 15 ? 'up' : priceVariation < 5 ? 'down' : 'neutral'
+          }}
+        />
 
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center space-x-2">
-              <BarChart3 className="h-4 w-4 text-muted-foreground" />
-              <Button variant="outline" size="sm" className="w-full">
-                Confronta prezzi
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+        <MetricCard
+          title="Clienti attivi"
+          value={uniqueCustomers.length}
+          description="Con listini validi"
+          icon={<BarChart3 className="h-4 w-4" />}
+        />
+      </div>
+
+      {/* Quick Actions */}
+      <div className="flex flex-wrap gap-2">
+        <Dialog open={showComparison} onOpenChange={setShowComparison}>
+          <DialogTrigger asChild>
+            <Button variant="outline" className="gap-2">
+              <GitCompare className="h-4 w-4" />
+              Confronta listini
+            </Button>
+          </DialogTrigger>
+          <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Confronto prezzi listini</DialogTitle>
+            </DialogHeader>
+            <PriceComparisonView priceListItems={validPriceListItems} productInfo={productInfo} />
+          </DialogContent>
+        </Dialog>
+
+        <Button variant="outline" className="gap-2">
+          <Plus className="h-4 w-4" />
+          Aggiungi a listino
+        </Button>
+
+        <Button variant="outline" className="gap-2">
+          <BarChart3 className="h-4 w-4" />
+          Analisi prezzi
+        </Button>
       </div>
 
       {/* Price Lists Table */}

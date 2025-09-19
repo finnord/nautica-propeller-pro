@@ -17,6 +17,7 @@ import Search from "./pages/Search";
 import Equivalences from "./pages/Equivalences";
 import EquivalenceNew from "./pages/EquivalenceNew";
 import ImportExport from "./pages/ImportExport";
+import { PriceListManagement } from "./pages/PriceListManagement";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -41,6 +42,7 @@ const App = () => (
           <Route path="/search" element={<Search />} />
           <Route path="/equivalences" element={<Equivalences />} />
           <Route path="/equivalences/new" element={<EquivalenceNew />} />
+          <Route path="/price-lists" element={<PriceListManagement />} />
           <Route path="/import-export" element={<ImportExport />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />

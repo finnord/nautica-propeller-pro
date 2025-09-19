@@ -7,6 +7,7 @@ import {
   FileText, 
   Search, 
   ArrowLeftRight,
+  Euro,
   ChevronLeft,
   ChevronRight
 } from 'lucide-react';
@@ -18,6 +19,7 @@ const navigation = [
   { name: 'Prodotti', href: '/products', icon: Ship },
   { name: 'Clienti', href: '/customers', icon: Users },
   { name: 'RFQ', href: '/rfq', icon: FileText },
+  { name: 'Listini Prezzi', href: '/price-lists', icon: Euro },
   { name: 'Trova Girante', href: '/search', icon: Search },
   { name: 'Equivalenze', href: '/equivalences', icon: ArrowLeftRight },
   { name: 'Import/Export', href: '/import-export', icon: Settings },
