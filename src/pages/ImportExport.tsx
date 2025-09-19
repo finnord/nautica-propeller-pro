@@ -6,7 +6,6 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Progress } from '@/components/ui/progress';
 import { useToast } from '@/hooks/use-toast';
-import { supabase } from '@/integrations/supabase/client';
 import { 
   Upload, 
   Download, 
@@ -16,18 +15,21 @@ import {
   CheckCircle,
   XCircle,
   Eye,
-  ExternalLink
+  ExternalLink,
+  RefreshCw,
+  Plus,
+  Edit,
+  SkipForward
 } from 'lucide-react';
 import { downloadTemplate, downloadExportData } from '@/lib/excel-utils';
+import { ConflictResolutionDialog, type Conflict, type ConflictResolution } from '@/components/dialogs/ConflictResolutionDialog';
+import { useImportValidation, type UpsertValidationResult, type ValidationLevel } from '@/hooks/useImportValidation';
+import { useImportUpsert, type UpsertResult } from '@/hooks/useImportUpsert';
+import { supabase } from '@/integrations/supabase/client';
 import * as XLSX from 'xlsx';
 
 type ImportStatus = 'idle' | 'uploading' | 'validating' | 'importing' | 'completed' | 'error';
-type ValidationResult = {
-  sheet: string;
-  rows: number;
-  errors: string[];
-  warnings: string[];
-};
+type ImportMode = 'preview' | 'conflicts' | 'importing';
 
 interface ImportData {
   sheet: string;
@@ -38,173 +40,92 @@ interface ImportData {
 export default function ImportExport() {
   const [importStatus, setImportStatus] = useState<ImportStatus>('idle');
   const [importProgress, setImportProgress] = useState(0);
-  const [validationResults, setValidationResults] = useState<ValidationResult[]>([]);
+  const [importMode, setImportMode] = useState<ImportMode>('preview');
+  const [validationResults, setValidationResults] = useState<UpsertValidationResult[]>([]);
   const [importData, setImportData] = useState<ImportData[]>([]);
   const [file, setFile] = useState<File | null>(null);
+  const [allConflicts, setAllConflicts] = useState<Conflict[]>([]);
+  const [conflictResolutions, setConflictResolutions] = useState<Record<string, ConflictResolution>>({});
+  const [showConflictDialog, setShowConflictDialog] = useState(false);
+  const [importResults, setImportResults] = useState<UpsertResult[]>([]);
+  
   const { toast } = useToast();
+  const { validateImpellerUpsert, validateRubberCompoundUpsert, validateBushingUpsert } = useImportValidation();
+  const { upsertImpellers, upsertRubberCompounds, upsertBushings } = useImportUpsert();
 
-  // Real validation functions
-  const validateImpellerData = async (data: any[]): Promise<ValidationResult> => {
-    const errors: string[] = [];
-    const warnings: string[] = [];
-    
-    for (const [index, row] of data.entries()) {
-      const rowNum = index + 2; // Excel row number
-      
-      if (!row.impeller_name) {
-        errors.push(`Riga ${rowNum}: Nome girante obbligatorio`);
-      }
-      if (!row.rubber_volume_cm3 || row.rubber_volume_cm3 <= 0) {
-        errors.push(`Riga ${rowNum}: Volume gomma obbligatorio e > 0`);
-      }
-      if (row.outer_diameter_mm && row.inner_diameter_mm && row.outer_diameter_mm <= row.inner_diameter_mm) {
-        errors.push(`Riga ${rowNum}: Diametro esterno deve essere > diametro interno`);
-      }
-      
-      // Check if rubber compound exists
-      if (row.rubber_compound_code) {
-        const { data: compound } = await supabase
-          .from('rubber_compounds')
-          .select('id')
-          .eq('compound_code', row.rubber_compound_code)
-          .single();
-        
-        if (!compound) {
-          warnings.push(`Riga ${rowNum}: Mescola ${row.rubber_compound_code} non trovata`);
-        }
-      }
-      
-      // Check if bushing exists
-      if (row.bushing_code) {
-        const { data: bushing } = await supabase
-          .from('bushings')
-          .select('id')
-          .eq('bushing_code', row.bushing_code)
-          .single();
-        
-        if (!bushing) {
-          warnings.push(`Riga ${rowNum}: Bussola ${row.bushing_code} non trovata`);
-        }
-      }
-    }
-    
-    return {
-      sheet: 'Impellers',
-      rows: data.length,
-      errors,
-      warnings
-    };
-  };
-
-  const validateCustomerData = (data: any[]): ValidationResult => {
-    const errors: string[] = [];
-    const warnings: string[] = [];
-    
-    for (const [index, row] of data.entries()) {
-      const rowNum = index + 2;
-      
-      if (!row.name) {
-        errors.push(`Riga ${rowNum}: Nome cliente obbligatorio`);
-      }
-      if (row.vat_number && !/^[A-Z]{2}[0-9]{11}$/.test(row.vat_number)) {
-        warnings.push(`Riga ${rowNum}: Formato P.IVA non valido`);
-      }
-    }
-    
-    return {
-      sheet: 'Customers',
-      rows: data.length,
-      errors,
-      warnings
-    };
-  };
-
-  const validateRubberCompoundData = (data: any[]): ValidationResult => {
-    const errors: string[] = [];
-    const warnings: string[] = [];
-    
-    for (const [index, row] of data.entries()) {
-      const rowNum = index + 2;
-      
-      if (!row.compound_code) {
-        errors.push(`Riga ${rowNum}: Codice mescola obbligatorio`);
-      }
-      if (!row.compound_name) {
-        errors.push(`Riga ${rowNum}: Nome mescola obbligatorio`);
-      }
-      if (!row.density_g_cm3 || row.density_g_cm3 <= 0) {
-        errors.push(`Riga ${rowNum}: Densità obbligatoria e > 0`);
-      }
-      if (!row.base_polymer) {
-        errors.push(`Riga ${rowNum}: Polimero base obbligatorio`);
-      }
-      if (row.material_cost_per_kg && row.material_cost_per_kg <= 0) {
-        warnings.push(`Riga ${rowNum}: Costo materiale dovrebbe essere > 0`);
-      }
-    }
-    
-    return {
-      sheet: 'RubberCompounds',
-      rows: data.length,
-      errors,
-      warnings
-    };
+  // Reset function
+  const resetImport = () => {
+    setImportStatus('idle');
+    setImportProgress(0);
+    setImportMode('preview');
+    setValidationResults([]);
+    setImportData([]);
+    setFile(null);
+    setAllConflicts([]);
+    setConflictResolutions({});
+    setImportResults([]);
   };
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = event.target.files?.[0];
     if (!selectedFile) return;
 
+    resetImport();
     setFile(selectedFile);
     setImportStatus('uploading');
-    setImportProgress(10);
 
     try {
-      // Read Excel file
       const arrayBuffer = await selectedFile.arrayBuffer();
-      const workbook = XLSX.read(arrayBuffer);
+      const workbook = XLSX.read(arrayBuffer, { type: 'array' });
       
       setImportStatus('validating');
-      setImportProgress(30);
       
       const parsedData: ImportData[] = [];
-      const validationPromises: Promise<ValidationResult>[] = [];
+      const validationPromises: Promise<UpsertValidationResult>[] = [];
       
-      // Process each sheet
+      let totalSheets = 0;
       for (const sheetName of workbook.SheetNames) {
-        if (sheetName === 'INFO' || sheetName === 'ISTRUZIONI') continue;
-        
         const worksheet = workbook.Sheets[sheetName];
         const jsonData = XLSX.utils.sheet_to_json(worksheet);
         
         if (jsonData.length > 0) {
-          const headers = Object.keys(jsonData[0] as object);
           parsedData.push({
             sheet: sheetName,
             data: jsonData,
-            headers
+            headers: Object.keys(jsonData[0] as any)
           });
+          totalSheets++;
           
-          // Validate based on sheet type
+          // Add smart validation based on sheet content
           if (sheetName.toLowerCase().includes('impeller') || sheetName === 'Products') {
-            validationPromises.push(validateImpellerData(jsonData));
-          } else if (sheetName.toLowerCase().includes('customer')) {
-            validationPromises.push(Promise.resolve(validateCustomerData(jsonData)));
+            validationPromises.push(validateImpellerUpsert(jsonData));
           } else if (sheetName.toLowerCase().includes('rubber') || sheetName.toLowerCase().includes('compound')) {
-            validationPromises.push(Promise.resolve(validateRubberCompoundData(jsonData)));
+            validationPromises.push(validateRubberCompoundUpsert(jsonData));
+          } else if (sheetName.toLowerCase().includes('bushing')) {
+            validationPromises.push(validateBushingUpsert(jsonData));
           }
         }
+        
+        setImportProgress((parsedData.length / workbook.SheetNames.length) * 70);
       }
-      
-      setImportProgress(60);
       
       // Wait for all validations
       const results = await Promise.all(validationPromises);
       
+      // Collect all conflicts
+      const conflicts: Conflict[] = [];
+      results.forEach(result => conflicts.push(...result.conflicts));
+      
       setImportData(parsedData);
       setValidationResults(results);
+      setAllConflicts(conflicts);
       setImportStatus('completed');
       setImportProgress(100);
+      
+      // Show conflicts if any
+      if (conflicts.length > 0) {
+        setImportMode('conflicts');
+      }
       
     } catch (error) {
       console.error('Error processing file:', error);
@@ -219,29 +140,43 @@ export default function ImportExport() {
 
   const handleImport = async () => {
     setImportStatus('importing');
+    setImportMode('importing');
     setImportProgress(0);
 
     try {
+      const results: UpsertResult[] = [];
       let totalProgress = 0;
       const sheets = importData.length;
       
       for (const sheet of importData) {
+        let result: UpsertResult;
+        
         if (sheet.sheet.toLowerCase().includes('impeller') || sheet.sheet === 'Products') {
-          await importImpellers(sheet.data);
-        } else if (sheet.sheet.toLowerCase().includes('customer')) {
-          await importCustomers(sheet.data);
+          result = await upsertImpellers(sheet.data, conflictResolutions);
         } else if (sheet.sheet.toLowerCase().includes('rubber') || sheet.sheet.toLowerCase().includes('compound')) {
-          await importRubberCompounds(sheet.data);
+          result = await upsertRubberCompounds(sheet.data, conflictResolutions);
+        } else if (sheet.sheet.toLowerCase().includes('bushing')) {
+          result = await upsertBushings(sheet.data, conflictResolutions);
+        } else {
+          result = { inserted: 0, updated: 0, skipped: sheet.data.length, errors: ['Tipo foglio non riconosciuto'] };
         }
         
+        results.push(result);
         totalProgress += (100 / sheets);
         setImportProgress(Math.round(totalProgress));
       }
       
+      setImportResults(results);
       setImportStatus('completed');
+      
+      const totalInserted = results.reduce((sum, r) => sum + r.inserted, 0);
+      const totalUpdated = results.reduce((sum, r) => sum + r.updated, 0);
+      const totalErrors = results.reduce((sum, r) => sum + r.errors.length, 0);
+      
       toast({
         title: 'Import completato',
-        description: 'Tutti i dati sono stati importati con successo'
+        description: `${totalInserted} inseriti, ${totalUpdated} aggiornati${totalErrors > 0 ? `, ${totalErrors} errori` : ''}`,
+        variant: totalErrors > 0 ? 'destructive' : 'default'
       });
       
     } catch (error) {
@@ -255,120 +190,26 @@ export default function ImportExport() {
     }
   };
 
-  const importImpellers = async (data: any[]) => {
-    const validData = data.filter(row => row.impeller_name && row.rubber_volume_cm3 > 0);
-    
-    for (const row of validData) {
-      const impellerData: any = {
-        impeller_name: row.impeller_name,
-        internal_code: row.internal_code || null,
-        outer_diameter_mm: row.outer_diameter_mm || null,
-        inner_diameter_mm: row.inner_diameter_mm || null,
-        height_mm: row.height_mm || null,
-        hub_diameter_mm: row.hub_diameter_mm || null,
-        blade_count: row.blade_count || null,
-        blade_thickness_base_mm: row.blade_thickness_base_mm || null,
-        rubber_volume_cm3: row.rubber_volume_cm3,
-        base_cost: row.base_cost || 0,
-        gross_margin_pct: row.gross_margin_pct || null,
-        base_list_price: row.base_list_price || null,
-        drawing_link_url: row.drawing_link_url || null,
-        notes: row.notes || null,
-        status: row.status || 'active'
-      };
-
-      // Link rubber compound if provided
-      if (row.rubber_compound_code) {
-        const { data: compound } = await supabase
-          .from('rubber_compounds')
-          .select('id')
-          .eq('compound_code', row.rubber_compound_code)
-          .single();
-        
-        if (compound) {
-          impellerData.rubber_compound_id = compound.id;
-        }
-      }
-
-      // Link bushing if provided
-      if (row.bushing_code) {
-        const { data: bushing } = await supabase
-          .from('bushings')
-          .select('id')
-          .eq('bushing_code', row.bushing_code)
-          .single();
-        
-        if (bushing) {
-          impellerData.bushing_id = bushing.id;
-        }
-      }
-
-      await supabase.from('impellers').insert(impellerData);
-    }
+  const handleConflictResolutions = (resolutions: Record<string, ConflictResolution>) => {
+    setConflictResolutions(resolutions);
+    setImportMode('preview');
   };
 
-  const importCustomers = async (data: any[]) => {
-    const validData = data.filter(row => row.name);
-    
-    for (const row of validData) {
-      const customerData = {
-        name: row.name,
-        vat_number: row.vat_number || null,
-        website: row.website || null,
-        annual_revenue_eur: row.annual_revenue_eur || null,
-        contacts: row.contacts ? JSON.parse(row.contacts) : null,
-        notes: row.notes || null
-      };
-
-      await supabase.from('customers').insert(customerData);
-    }
-  };
-
-  const importRubberCompounds = async (data: any[]) => {
-    const validData = data.filter(row => row.compound_code && row.compound_name && row.density_g_cm3 > 0);
-    
-    for (const row of validData) {
-      const compoundData = {
-        compound_code: row.compound_code,
-        compound_name: row.compound_name,
-        base_polymer: row.base_polymer,
-        density_g_cm3: row.density_g_cm3,
-        material_cost_per_kg: row.material_cost_per_kg || null,
-        supplier_name: row.supplier_name || null,
-        cef_internal_code: row.cef_internal_code || null,
-        notes: row.notes || null
-      };
-
-      await supabase.from('rubber_compounds').insert(compoundData);
-    }
-  };
-
-  const getStatusColor = (hasErrors: boolean, hasWarnings: boolean) => {
-    if (hasErrors) return 'bg-red-500/10 text-red-700 border-red-200';
-    if (hasWarnings) return 'bg-yellow-500/10 text-yellow-700 border-yellow-200';
-    return 'bg-green-500/10 text-green-700 border-green-200';
-  };
-
-  const getStatusIcon = (hasErrors: boolean, hasWarnings: boolean) => {
-    if (hasErrors) return XCircle;
-    if (hasWarnings) return AlertCircle;
-    return CheckCircle;
+  const handleResolveAllConflicts = (resolution: ConflictResolution) => {
+    const allResolutions: Record<string, ConflictResolution> = {};
+    allConflicts.forEach(conflict => {
+      allResolutions[conflict.id] = resolution;
+    });
+    setConflictResolutions(allResolutions);
+    setImportMode('preview');
   };
 
   const handleDownloadTemplate = () => {
-    const success = downloadTemplate();
-    if (success) {
-      toast({
-        title: "Template scaricato",
-        description: "Il template Excel è stato scaricato con successo",
-      });
-    } else {
-      toast({
-        title: "Errore download",
-        description: "Si è verificato un errore durante il download",
-        variant: "destructive",
-      });
-    }
+    downloadTemplate();
+    toast({
+      title: "Template scaricato",
+      description: "Il template Excel è stato scaricato con successo",
+    });
   };
 
   const handleExport = async (type: 'products' | 'customers' | 'rfq' | 'equivalences' | 'complete', format: 'xlsx' | 'csv' = 'xlsx') => {
@@ -382,8 +223,8 @@ export default function ImportExport() {
             .from('impellers')
             .select(`
               *,
-              rubber_compounds:rubber_compound_id (compound_code, compound_name),
-              bushings:bushing_id (bushing_code, material)
+              rubber_compounds (compound_code, compound_name),
+              bushings (bushing_code, material)
             `);
           data = impellers || [];
           filename = 'Prodotti_Export';
@@ -500,330 +341,466 @@ export default function ImportExport() {
           </TabsList>
 
           <TabsContent value="import" className="space-y-6">
-            {/* Import Instructions */}
-            <Card className="card-elevated">
-              <CardHeader>
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <FileSpreadsheet className="h-5 w-5" />
-                  Template Import v3
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <p className="text-sm text-muted-foreground">
-                  Utilizza il template Excel v3 con i seguenti fogli obbligatori:
-                </p>
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
-                  <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 bg-primary rounded-full" />
-                    <span>Products</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 bg-primary rounded-full" />
-                    <span>ImpellerDims</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 bg-primary rounded-full" />
-                    <span>RubberMix</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 bg-primary rounded-full" />
-                    <span>Bushing</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 bg-primary rounded-full" />
-                    <span>Customers</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 bg-primary rounded-full" />
-                    <span>PriceLists</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 bg-primary rounded-full" />
-                    <span>EquivalentImpeller</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 bg-primary rounded-full" />
-                    <span>EquivalentBushing</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 bg-primary rounded-full" />
-                    <span>RFQ & RFQLines</span>
-                  </div>
-                </div>
-                
-                <div className="flex gap-3">
-                  <Button 
-                    variant="outline"
-                    onClick={handleDownloadTemplate}
-                  >
-                    <Download className="h-4 w-4 mr-2" />
-                    Scarica Template v3
-                  </Button>
-                  <Button 
-                    variant="outline"
-                    onClick={() => window.open('https://docs.google.com/document/d/example-import-guide', '_blank')}
-                  >
-                    <ExternalLink className="h-4 w-4 mr-2" />
-                    Guida Import
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* File Upload */}
-            <Card className="card-elevated">
-              <CardHeader>
-                <CardTitle className="text-lg">Carica File Excel</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="border-2 border-dashed border-border rounded-lg p-8 text-center relative">
-                  <Upload className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                  <div className="space-y-2">
-                    <p className="text-sm font-medium">Trascina il file Excel qui o clicca per selezionare</p>
-                    <p className="text-xs text-muted-foreground">Supporto per file .xlsx e .xls (max 10MB)</p>
-                    {file && (
-                      <p className="text-sm text-primary font-medium">File selezionato: {file.name}</p>
-                    )}
-                  </div>
-                  <input
-                    type="file"
-                    accept=".xlsx,.xls"
-                    onChange={handleFileUpload}
-                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                  />
-                </div>
-
-                {importStatus !== 'idle' && (
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between text-sm">
-                      <span>
-                        {importStatus === 'uploading' && 'Caricamento file...'}
-                        {importStatus === 'validating' && 'Validazione dati...'}
-                        {importStatus === 'importing' && 'Importazione in corso...'}
-                        {importStatus === 'completed' && 'Importazione completata'}
-                      </span>
-                      <span>{importProgress}%</span>
-                    </div>
-                    <Progress value={importProgress} className="h-2" />
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
-            {/* Validation Results */}
-            {validationResults.length > 0 && (
-              <Card className="card-elevated">
+            <div className="grid gap-6">
+              {/* Instructions */}
+              <Card>
                 <CardHeader>
-                  <CardTitle className="text-lg">Risultati Validazione</CardTitle>
+                  <CardTitle className="flex items-center gap-2">
+                    <FileSpreadsheet className="h-5 w-5" />
+                    Template e Istruzioni
+                  </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  {validationResults.map((result, index) => {
-                    const hasErrors = result.errors.length > 0;
-                    const hasWarnings = result.warnings.length > 0;
-                    const StatusIcon = getStatusIcon(hasErrors, hasWarnings);
-
-                    return (
-                      <Card key={index} className="card-interactive">
-                        <CardContent className="pt-4">
-                          <div className="flex items-center justify-between mb-3">
-                            <div className="flex items-center gap-3">
-                              <StatusIcon className="h-5 w-5" />
-                              <div>
-                                <h3 className="font-semibold">{result.sheet}</h3>
-                                <p className="text-sm text-muted-foreground">{result.rows} righe</p>
-                              </div>
-                            </div>
-                            <Badge className={getStatusColor(hasErrors, hasWarnings)}>
-                              {hasErrors ? 'Errori' : hasWarnings ? 'Avvisi' : 'OK'}
-                            </Badge>
-                          </div>
-
-                          {result.errors.length > 0 && (
-                            <div className="space-y-1 mb-2">
-                              <p className="text-sm font-medium text-red-700">Errori:</p>
-                              {result.errors.map((error, i) => (
-                                <p key={i} className="text-xs text-red-600 pl-2">• {error}</p>
-                              ))}
-                            </div>
-                          )}
-
-                          {result.warnings.length > 0 && (
-                            <div className="space-y-1">
-                              <p className="text-sm font-medium text-yellow-700">Avvisi:</p>
-                              {result.warnings.map((warning, i) => (
-                                <p key={i} className="text-xs text-yellow-600 pl-2">• {warning}</p>
-                              ))}
-                            </div>
-                          )}
-                        </CardContent>
-                      </Card>
-                    );
-                  })}
-
-                  <div className="flex justify-center pt-4">
-                    <Button 
-                      onClick={handleImport}
-                      disabled={validationResults.some(r => r.errors.length > 0) || importStatus === 'importing'}
-                      className="btn-primary"
-                    >
-                      {importStatus === 'importing' ? 'Importazione...' : 'Conferma Import'}
+                  <div className="grid md:grid-cols-2 gap-4">
+                    <div className="space-y-3">
+                      <h4 className="font-medium">Come Importare:</h4>
+                      <ul className="list-disc list-inside text-sm text-muted-foreground space-y-1">
+                        <li>Scarica il template Excel con la struttura corretta</li>
+                        <li>Compila i dati seguendo le colonne predefinite</li>
+                        <li>I campi critici sono obbligatori per evitare errori</li>
+                        <li>Il sistema rileva automaticamente record esistenti</li>
+                        <li>Vengono proposti aggiornamenti per dati esistenti</li>
+                        <li>I conflitti vengono risolti interattivamente</li>
+                      </ul>
+                    </div>
+                    <div className="space-y-3">
+                      <h4 className="font-medium">Validazione Intelligente:</h4>
+                      <ul className="list-disc list-inside text-sm text-muted-foreground space-y-1">
+                        <li><Badge variant="destructive" className="text-xs">Critico</Badge> - Blocca l'import</li>
+                        <li><Badge variant="secondary" className="text-xs">Importante</Badge> - Avvisi da verificare</li>
+                        <li><Badge variant="outline" className="text-xs">Suggerito</Badge> - Migliorie consigliate</li>
+                        <li>UPSERT automatico: inserisce nuovi record o aggiorna esistenti</li>
+                        <li>Gestione conflitti: risoluzione interattiva delle differenze</li>
+                      </ul>
+                    </div>
+                  </div>
+                  
+                  <div className="flex flex-wrap gap-3 pt-4 border-t">
+                    <Button onClick={handleDownloadTemplate} variant="outline">
+                      <Download className="h-4 w-4 mr-2" />
+                      Scarica Template Excel
+                    </Button>
+                    <Button variant="outline" asChild>
+                      <a href="#" target="_blank" rel="noopener noreferrer">
+                        <ExternalLink className="h-4 w-4 mr-2" />
+                        Guida Completa
+                      </a>
                     </Button>
                   </div>
                 </CardContent>
               </Card>
-            )}
+
+              {/* File Upload */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Upload className="h-5 w-5" />
+                    Caricamento File
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="border-2 border-dashed border-border rounded-lg p-8 text-center">
+                    <input
+                      type="file"
+                      accept=".xlsx,.xls"
+                      onChange={handleFileUpload}
+                      className="hidden"
+                      id="file-upload"
+                      disabled={importStatus === 'uploading' || importStatus === 'validating'}
+                    />
+                    <label
+                      htmlFor="file-upload"
+                      className="cursor-pointer block space-y-4"
+                    >
+                      <div className="mx-auto w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center">
+                        <FileSpreadsheet className="h-6 w-6 text-primary" />
+                      </div>
+                      <div>
+                        <div className="text-lg font-medium">
+                          {file ? file.name : 'Seleziona file Excel'}
+                        </div>
+                        <div className="text-sm text-muted-foreground">
+                          Formato supportato: .xlsx, .xls
+                        </div>
+                      </div>
+                    </label>
+                  </div>
+
+                  {/* Progress */}
+                  {(importStatus === 'uploading' || importStatus === 'validating') && (
+                    <div className="space-y-2">
+                      <div className="flex justify-between text-sm">
+                        <span>
+                          {importStatus === 'uploading' ? 'Caricamento...' : 'Validazione...'}
+                        </span>
+                        <span>{importProgress}%</span>
+                      </div>
+                      <Progress value={importProgress} />
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Validation Results - Preview Mode */}
+              {importMode === 'preview' && validationResults.length > 0 && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <Eye className="h-5 w-5" />
+                      Anteprima Import - Analisi Intelligente
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    {/* Summary Statistics */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 bg-muted/50 rounded-lg">
+                      <div className="text-center">
+                        <div className="flex items-center justify-center gap-2 text-green-600">
+                          <Plus className="h-5 w-5" />
+                          <span className="text-2xl font-bold">
+                            {validationResults.reduce((sum, r) => sum + r.proposedChanges.inserts, 0)}
+                          </span>
+                        </div>
+                        <p className="text-sm text-muted-foreground">Nuovi record</p>
+                      </div>
+                      <div className="text-center">
+                        <div className="flex items-center justify-center gap-2 text-blue-600">
+                          <Edit className="h-5 w-5" />
+                          <span className="text-2xl font-bold">
+                            {validationResults.reduce((sum, r) => sum + r.proposedChanges.updates, 0)}
+                          </span>
+                        </div>
+                        <p className="text-sm text-muted-foreground">Aggiornamenti</p>
+                      </div>
+                      <div className="text-center">
+                        <div className="flex items-center justify-center gap-2 text-orange-600">
+                          <SkipForward className="h-5 w-5" />
+                          <span className="text-2xl font-bold">
+                            {validationResults.reduce((sum, r) => sum + r.proposedChanges.skipped, 0)}
+                          </span>
+                        </div>
+                        <p className="text-sm text-muted-foreground">Saltati</p>
+                      </div>
+                    </div>
+
+                    {/* Validation Messages by Sheet */}
+                    {validationResults.map((result, index) => (
+                      <div key={index} className="border rounded-lg p-4">
+                        <div className="flex items-center justify-between mb-3">
+                          <h4 className="font-medium">{result.sheet}</h4>
+                          <Badge variant={result.canProceed ? 'default' : 'destructive'}>
+                            {result.rows} righe
+                          </Badge>
+                        </div>
+                        
+                        {/* Critical Messages */}
+                        {result.validMessages.filter(m => m.level === 'critical').length > 0 && (
+                          <div className="space-y-2">
+                            <div className="flex items-center gap-2 text-destructive">
+                              <XCircle className="h-4 w-4" />
+                              <span className="font-medium">
+                                Errori Critici ({result.validMessages.filter(m => m.level === 'critical').length})
+                              </span>
+                            </div>
+                            <ul className="list-disc list-inside space-y-1 text-sm text-muted-foreground pl-6">
+                              {result.validMessages.filter(m => m.level === 'critical').map((msg, msgIndex) => (
+                                <li key={msgIndex}>Riga {msg.rowNumber}: {msg.message}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                        
+                        {/* Important Messages */}
+                        {result.validMessages.filter(m => m.level === 'important').length > 0 && (
+                          <div className="space-y-2 mt-3">
+                            <div className="flex items-center gap-2 text-yellow-600">
+                              <AlertCircle className="h-4 w-4" />
+                              <span className="font-medium">
+                                Avvisi Importanti ({result.validMessages.filter(m => m.level === 'important').length})
+                              </span>
+                            </div>
+                            <ul className="list-disc list-inside space-y-1 text-sm text-muted-foreground pl-6">
+                              {result.validMessages.filter(m => m.level === 'important').slice(0, 5).map((msg, msgIndex) => (
+                                <li key={msgIndex}>Riga {msg.rowNumber}: {msg.message}</li>
+                              ))}
+                              {result.validMessages.filter(m => m.level === 'important').length > 5 && (
+                                <li className="text-muted-foreground">
+                                  ... e altri {result.validMessages.filter(m => m.level === 'important').length - 5} avvisi
+                                </li>
+                              )}
+                            </ul>
+                          </div>
+                        )}
+                        
+                        {/* Conflicts Summary */}
+                        {result.conflicts.length > 0 && (
+                          <div className="space-y-2 mt-3">
+                            <div className="flex items-center gap-2 text-orange-600">
+                              <AlertCircle className="h-4 w-4" />
+                              <span className="font-medium">
+                                Conflitti da Risolvere ({result.conflicts.length})
+                              </span>
+                            </div>
+                            <p className="text-sm text-muted-foreground pl-6">
+                              Record esistenti con valori diversi
+                            </p>
+                          </div>
+                        )}
+                        
+                        {result.canProceed && result.validMessages.filter(m => m.level === 'critical').length === 0 && (
+                          <div className="flex items-center gap-2 text-green-600 mt-3">
+                            <CheckCircle className="h-4 w-4" />
+                            <span>Pronto per l'import</span>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                    
+                    {/* Import Actions */}
+                    <div className="flex justify-between items-center pt-4 border-t">
+                      <div className="text-sm text-muted-foreground">
+                        {!validationResults.every(r => r.canProceed)
+                          ? 'Correggere gli errori critici prima di procedere'
+                          : allConflicts.length > 0
+                          ? 'Conflitti rilevati - risolverli per procedere'
+                          : 'Analisi completata, pronto per l\'import'
+                        }
+                      </div>
+                      <div className="flex gap-2">
+                        <Button variant="outline" onClick={resetImport}>
+                          <RefreshCw className="h-4 w-4 mr-2" />
+                          Ricomincia
+                        </Button>
+                        {allConflicts.length > 0 && (
+                          <Button 
+                            variant="outline"
+                            onClick={() => setShowConflictDialog(true)}
+                          >
+                            <AlertCircle className="h-4 w-4 mr-2" />
+                            Risolvi Conflitti ({allConflicts.length})
+                          </Button>
+                        )}
+                        <Button 
+                          onClick={handleImport}
+                          disabled={!validationResults.every(r => r.canProceed)}
+                        >
+                          {allConflicts.length > 0 && Object.keys(conflictResolutions).length === 0 
+                            ? 'Risolvi Conflitti Prima' 
+                            : 'Procedi con Import'
+                          }
+                        </Button>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Import Results */}
+              {importMode === 'importing' && importResults.length > 0 && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <CheckCircle className="h-5 w-5 text-green-600" />
+                      Risultati Import
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    {importResults.map((result, index) => (
+                      <div key={index} className="border rounded-lg p-4">
+                        <div className="grid grid-cols-3 gap-4 text-center">
+                          <div>
+                            <div className="text-2xl font-bold text-green-600">{result.inserted}</div>
+                            <div className="text-sm text-muted-foreground">Inseriti</div>
+                          </div>
+                          <div>
+                            <div className="text-2xl font-bold text-blue-600">{result.updated}</div>
+                            <div className="text-sm text-muted-foreground">Aggiornati</div>
+                          </div>
+                          <div>
+                            <div className="text-2xl font-bold text-orange-600">{result.skipped}</div>
+                            <div className="text-sm text-muted-foreground">Saltati</div>
+                          </div>
+                        </div>
+                        
+                        {result.errors.length > 0 && (
+                          <div className="mt-4 space-y-2">
+                            <div className="flex items-center gap-2 text-destructive">
+                              <XCircle className="h-4 w-4" />
+                              <span className="font-medium">Errori ({result.errors.length})</span>
+                            </div>
+                            <ul className="list-disc list-inside space-y-1 text-sm text-muted-foreground pl-6">
+                              {result.errors.map((error, errorIndex) => (
+                                <li key={errorIndex}>{error}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Conflict Resolution Dialog */}
+              <ConflictResolutionDialog
+                open={showConflictDialog}
+                onOpenChange={setShowConflictDialog}
+                conflicts={allConflicts}
+                onResolve={handleConflictResolutions}
+                onResolveAll={handleResolveAllConflicts}
+              />
+            </div>
           </TabsContent>
 
           <TabsContent value="export" className="space-y-6">
-            {/* Export Options */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              <Card className="card-interactive">
+            <div className="grid gap-6">
+              {/* Export Options */}
+              <Card>
                 <CardHeader>
-                  <CardTitle className="text-lg flex items-center gap-2">
-                    <FileSpreadsheet className="h-5 w-5" />
-                    Esporta Prodotti
+                  <CardTitle className="flex items-center gap-2">
+                    <Download className="h-5 w-5" />
+                    Opzioni Export
                   </CardTitle>
                 </CardHeader>
-                <CardContent className="space-y-4">
-                  <p className="text-sm text-muted-foreground">
-                    Esporta tutti i prodotti con dimensioni, materiali e prezzi
-                  </p>
-                  <div className="flex gap-2">
-                    <Button 
-                      size="sm" 
-                      variant="outline"
-                      onClick={() => handleExport('products', 'xlsx')}
-                    >
-                      <FileSpreadsheet className="h-3 w-3 mr-1" />
-                      Excel
-                    </Button>
-                    <Button 
-                      size="sm" 
-                      variant="outline"
-                      onClick={() => handleExport('products', 'csv')}
-                    >
-                      <FileText className="h-3 w-3 mr-1" />
-                      CSV
-                    </Button>
+                <CardContent className="space-y-6">
+                  <div className="grid md:grid-cols-2 gap-6">
+                    {/* Single Category Exports */}
+                    <div className="space-y-4">
+                      <h4 className="font-medium">Export per Categoria</h4>
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between p-3 border rounded-lg">
+                          <div className="flex items-center gap-3">
+                            <FileSpreadsheet className="h-5 w-5 text-primary" />
+                            <div>
+                              <div className="font-medium">Prodotti</div>
+                              <div className="text-sm text-muted-foreground">Giranti, mescole, bussole</div>
+                            </div>
+                          </div>
+                          <div className="flex gap-2">
+                            <Button 
+                              size="sm" 
+                              variant="outline" 
+                              onClick={() => handleExport('products', 'xlsx')}
+                            >
+                              XLSX
+                            </Button>
+                            <Button 
+                              size="sm" 
+                              variant="outline" 
+                              onClick={() => handleExport('products', 'csv')}
+                            >
+                              CSV
+                            </Button>
+                          </div>
+                        </div>
+                        
+                        <div className="flex items-center justify-between p-3 border rounded-lg">
+                          <div className="flex items-center gap-3">
+                            <FileText className="h-5 w-5 text-primary" />
+                            <div>
+                              <div className="font-medium">Clienti</div>
+                              <div className="text-sm text-muted-foreground">Anagrafica clienti</div>
+                            </div>
+                          </div>
+                          <div className="flex gap-2">
+                            <Button 
+                              size="sm" 
+                              variant="outline" 
+                              onClick={() => handleExport('customers', 'xlsx')}
+                            >
+                              XLSX
+                            </Button>
+                            <Button 
+                              size="sm" 
+                              variant="outline" 
+                              onClick={() => handleExport('customers', 'csv')}
+                            >
+                              CSV
+                            </Button>
+                          </div>
+                        </div>
+                        
+                        <div className="flex items-center justify-between p-3 border rounded-lg">
+                          <div className="flex items-center gap-3">
+                            <FileSpreadsheet className="h-5 w-5 text-primary" />
+                            <div>
+                              <div className="font-medium">RFQ</div>
+                              <div className="text-sm text-muted-foreground">Richieste di quotazione</div>
+                            </div>
+                          </div>
+                          <div className="flex gap-2">
+                            <Button 
+                              size="sm" 
+                              variant="outline" 
+                              onClick={() => handleExport('rfq', 'xlsx')}
+                            >
+                              XLSX
+                            </Button>
+                            <Button 
+                              size="sm" 
+                              variant="outline" 
+                              onClick={() => handleExport('rfq', 'csv')}
+                            >
+                              CSV
+                            </Button>
+                          </div>
+                        </div>
+                        
+                        <div className="flex items-center justify-between p-3 border rounded-lg">
+                          <div className="flex items-center gap-3">
+                            <FileText className="h-5 w-5 text-primary" />
+                            <div>
+                              <div className="font-medium">Equivalenze</div>
+                              <div className="text-sm text-muted-foreground">Cross-references</div>
+                            </div>
+                          </div>
+                          <div className="flex gap-2">
+                            <Button 
+                              size="sm" 
+                              variant="outline" 
+                              onClick={() => handleExport('equivalences', 'xlsx')}
+                            >
+                              XLSX
+                            </Button>
+                            <Button 
+                              size="sm" 
+                              variant="outline" 
+                              onClick={() => handleExport('equivalences', 'csv')}
+                            >
+                              CSV
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    {/* Complete Export */}
+                    <div className="space-y-4">
+                      <h4 className="font-medium">Export Completo</h4>
+                      <div className="border rounded-lg p-6 text-center space-y-4">
+                        <div className="mx-auto w-16 h-16 bg-primary/10 rounded-lg flex items-center justify-center">
+                          <Download className="h-8 w-8 text-primary" />
+                        </div>
+                        <div>
+                          <div className="font-medium text-lg">Backup Completo</div>
+                          <div className="text-sm text-muted-foreground">
+                            Tutti i dati in un unico file con fogli separati
+                          </div>
+                        </div>
+                        <div className="flex justify-center gap-3">
+                          <Button onClick={() => handleExport('complete', 'xlsx')}>
+                            <Download className="h-4 w-4 mr-2" />
+                            Download XLSX
+                          </Button>
+                          <Button 
+                            variant="outline" 
+                            onClick={() => handleExport('complete', 'csv')}
+                          >
+                            Download CSV
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
                   </div>
-                </CardContent>
-              </Card>
-
-              <Card className="card-interactive">
-                <CardHeader>
-                  <CardTitle className="text-lg flex items-center gap-2">
-                    <FileSpreadsheet className="h-5 w-5" />
-                    Esporta Clienti
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <p className="text-sm text-muted-foreground">
-                    Esporta anagrafica clienti e listini prezzi
-                  </p>
-                  <div className="flex gap-2">
-                    <Button 
-                      size="sm" 
-                      variant="outline"
-                      onClick={() => handleExport('customers', 'xlsx')}
-                    >
-                      <FileSpreadsheet className="h-3 w-3 mr-1" />
-                      Excel
-                    </Button>
-                    <Button 
-                      size="sm" 
-                      variant="outline"
-                      onClick={() => handleExport('customers', 'csv')}
-                    >
-                      <FileText className="h-3 w-3 mr-1" />
-                      CSV
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card className="card-interactive">
-                <CardHeader>
-                  <CardTitle className="text-lg flex items-center gap-2">
-                    <FileSpreadsheet className="h-5 w-5" />
-                    Esporta RFQ
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <p className="text-sm text-muted-foreground">
-                    Esporta richieste di quotazione e offerte
-                  </p>
-                  <div className="flex gap-2">
-                    <Button 
-                      size="sm" 
-                      variant="outline"
-                      onClick={() => handleExport('rfq', 'xlsx')}
-                    >
-                      <FileSpreadsheet className="h-3 w-3 mr-1" />
-                      Excel
-                    </Button>
-                    <Button 
-                      size="sm" 
-                      variant="outline"
-                      onClick={() => handleExport('rfq', 'csv')}
-                    >
-                      <FileText className="h-3 w-3 mr-1" />
-                      CSV
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card className="card-interactive">
-                <CardHeader>
-                  <CardTitle className="text-lg flex items-center gap-2">
-                    <FileSpreadsheet className="h-5 w-5" />
-                    Esporta Equivalenze
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <p className="text-sm text-muted-foreground">
-                    Esporta tutte le equivalenze tra prodotti
-                  </p>
-                  <div className="flex gap-2">
-                    <Button 
-                      size="sm" 
-                      variant="outline"
-                      onClick={() => handleExport('equivalences', 'xlsx')}
-                    >
-                      <FileSpreadsheet className="h-3 w-3 mr-1" />
-                      Excel
-                    </Button>
-                    <Button 
-                      size="sm" 
-                      variant="outline"
-                      onClick={() => handleExport('equivalences', 'csv')}
-                    >
-                      <FileText className="h-3 w-3 mr-1" />
-                      CSV
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card className="card-interactive">
-                <CardHeader>
-                  <CardTitle className="text-lg flex items-center gap-2">
-                    <FileSpreadsheet className="h-5 w-5" />
-                    Export Completo
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <p className="text-sm text-muted-foreground">
-                    Esporta tutti i dati in formato template v3
-                  </p>
-                  <Button 
-                    size="sm" 
-                    className="btn-primary w-full"
-                    onClick={() => handleExport('complete', 'xlsx')}
-                  >
-                    <Download className="h-3 w-3 mr-1" />
-                    Scarica Tutto
-                  </Button>
                 </CardContent>
               </Card>
             </div>
