@@ -1,33 +1,36 @@
-import { useState } from 'react';
-import { supabase } from '@/integrations/supabase/client';
-import type { PriceListImportRow, PriceListConflict } from './usePriceListImportValidation';
+import { useState } from "react";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
 
-export type PriceListConflictResolution = 'keep_existing' | 'use_new' | 'skip_record';
+export interface PriceListConflictResolution {
+  action: 'skip' | 'update' | 'append';
+  newListName?: string;
+}
 
 export interface PriceListUpsertResult {
   inserted: number;
   updated: number;
   skipped: number;
   errors: string[];
-  log: PriceListOperationLog[];
+  logs: PriceListOperationLog[];
 }
 
 export interface PriceListOperationLog {
+  customer: string;
+  listName: string;
+  listVersion?: string;
+  action: 'created' | 'updated' | 'skipped' | 'error';
+  details: string;
   timestamp: string;
-  operation: 'create_customer' | 'create_price_list' | 'create_item' | 'update_item' | 'skip';
-  recordKey: string;
-  oldValue?: any;
-  newValue?: any;
-  rowNumber: number;
 }
 
 export type ImportMode = 'append' | 'update' | 'upsert';
 
-export function usePriceListImportUpsert() {
+export const usePriceListImportUpsert = () => {
   const [isImporting, setIsImporting] = useState(false);
 
   const upsertPriceListData = async (
-    data: PriceListImportRow[],
+    data: any[],
     conflictResolutions: Record<string, PriceListConflictResolution> = {},
     mode: ImportMode = 'upsert'
   ): Promise<PriceListUpsertResult> => {
@@ -38,259 +41,211 @@ export function usePriceListImportUpsert() {
       updated: 0,
       skipped: 0,
       errors: [],
-      log: []
+      logs: []
     };
 
     try {
-      // Get existing data
-      const [{ data: existingCustomers }, { data: existingPriceLists }, { data: existingProducts }] = await Promise.all([
-        supabase.from('customers').select('id, name, vat_number'),
-        supabase.from('price_lists').select('id, customer_id, list_name, currency, customers(name)'),
-        supabase.from('impellers').select('id, impeller_name, internal_code')
-      ]);
+      // Fetch propellers (correct table for price_list_items.propeller_id)
+      console.log('Fetching propellers...');
+      const { data: existingPropellers } = await supabase
+        .from('propellers')
+        .select('id, model, description, base_cost');
 
-      const customerMap = new Map(existingCustomers?.map(c => [c.name.toLowerCase(), c]) || []);
-      const priceListMap = new Map(existingPriceLists?.map(pl => [`${pl.customers?.name?.toLowerCase()}_${pl.list_name.toLowerCase()}`, pl]) || []);
-      const productMap = new Map();
-      existingProducts?.forEach(p => {
-        productMap.set(p.impeller_name?.toLowerCase(), p);
-        if (p.internal_code) productMap.set(p.internal_code.toLowerCase(), p);
-      });
-
-      // Group rows by customer/price list for atomic operations
-      const groups = new Map<string, { customerId?: string; priceListId?: string; rows: Array<{ row: PriceListImportRow; rowNumber: number }> }>();
-      
-      for (let i = 0; i < data.length; i++) {
-        const row = data[i];
-        const rowNumber = i + 2;
-        const customerName = row.customer_name || 'Cliente Generico';
-        const listName = row.list_name || 'Listino Standard';
-        const groupKey = `${customerName.toLowerCase()}_${listName.toLowerCase()}`;
-        
-        if (!groups.has(groupKey)) {
-          groups.set(groupKey, { rows: [] });
-        }
-        groups.get(groupKey)!.rows.push({ row, rowNumber });
+      if (!existingPropellers) {
+        throw new Error('Failed to fetch propellers');
       }
 
-      // Process each group atomically
-      for (const [groupKey, group] of groups.entries()) {
+      // Build product map for faster lookup with case-insensitive keys
+      const productMap = new Map<string, any>();
+      existingPropellers.forEach(propeller => {
+        if (propeller.model) {
+          const normalizedModel = propeller.model.toLowerCase().trim();
+          productMap.set(normalizedModel, propeller);
+        }
+      });
+
+      // Fetch cross-references for OEM/CEF codes
+      console.log('Fetching cross-references...');
+      const { data: crossReferences } = await supabase
+        .from('cross_references')
+        .select('reference_code, propeller_id, propellers!inner(id, model)')
+        .eq('reference_type', 'CEF');
+
+      // Build cross-reference map
+      const crossRefMap = new Map<string, string>();
+      if (crossReferences) {
+        crossReferences.forEach(ref => {
+          if (ref.reference_code && ref.propeller_id) {
+            const normalizedCode = ref.reference_code.toLowerCase().trim();
+            crossRefMap.set(normalizedCode, ref.propeller_id);
+          }
+        });
+      }
+
+      // Enhanced product resolution function
+      const resolveProduct = (cefCode: string) => {
+        const normalizedCode = cefCode.toLowerCase().trim();
+        
+        // Try direct model match first
+        let product = productMap.get(normalizedCode);
+        if (product) {
+          console.log(`Direct match found for ${cefCode}: ${product.model}`);
+          return product;
+        }
+
+        // Try cross-reference lookup
+        const propellerId = crossRefMap.get(normalizedCode);
+        if (propellerId) {
+          product = existingPropellers.find(p => p.id === propellerId);
+          if (product) {
+            console.log(`Cross-reference match found for ${cefCode}: ${product.model}`);
+            return product;
+          }
+        }
+
+        // Try normalization (remove non-alphanumeric)
+        const alphanumericCode = normalizedCode.replace(/[^a-z0-9]/g, '');
+        if (alphanumericCode !== normalizedCode) {
+          product = productMap.get(alphanumericCode);
+          if (product) {
+            console.log(`Normalized match found for ${cefCode}: ${product.model}`);
+            return product;
+          }
+        }
+
+        console.log(`No match found for CEF code: ${cefCode}`);
+        return null;
+      };
+
+      // Group data by customer, list_name, and list_version
+      const groupedData = new Map<string, any[]>();
+      
+      data.forEach(row => {
+        const listVersion = row.list_version?.trim() || 'v1';
+        const groupKey = `${row.customer_name?.toLowerCase().trim()}_${row.list_name?.toLowerCase().trim()}_${listVersion.toLowerCase()}`;
+        if (!groupedData.has(groupKey)) {
+          groupedData.set(groupKey, []);
+        }
+        groupedData.get(groupKey)!.push(row);
+      });
+
+      console.log(`Processing ${groupedData.size} price list groups...`);
+
+      // Process each group using the atomic RPC function
+      for (const [groupKey, rows] of groupedData.entries()) {
         try {
-          // Setup group variables from first row if not already done
-          if (!group.customerId || !group.priceListId) {
-            const firstRow = group.rows[0];
-            const customerName = firstRow.row.customer_name || 'Cliente Generico';
-            const listName = firstRow.row.list_name || 'Listino Standard';
-            const currency = firstRow.row.currency || 'EUR';
-            
-            // Find or create customer
-            let customerId = customerMap.get(customerName.toLowerCase())?.id;
-            if (!customerId) {
-              if (mode === 'update') {
-                // Skip entire group
-                result.skipped += group.rows.length;
-                continue;
-              }
+          if (rows.length === 0) continue;
 
-              const { data: newCustomer, error: customerError } = await supabase
-                .from('customers')
-                .insert({
-                  name: customerName,
-                  vat_number: firstRow.row.customer_code || null
-                })
-                .select('id')
-                .single();
+          const firstRow = rows[0];
+          const customerName = firstRow.customer_name?.trim();
+          const listName = firstRow.list_name?.trim();
+          const listVersion = firstRow.list_version?.trim() || 'v1';
 
-              if (customerError) {
-                result.errors.push(`Gruppo ${groupKey}: Errore creazione cliente - ${customerError.message}`);
-                result.skipped += group.rows.length;
-                continue;
-              }
-
-              customerId = newCustomer.id;
-              customerMap.set(customerName.toLowerCase(), { id: customerId, name: customerName, vat_number: firstRow.row.customer_code });
-            }
-
-            // Find or create price list
-            const priceListKey = `${customerName.toLowerCase()}_${listName.toLowerCase()}`;
-            let priceListId = priceListMap.get(priceListKey)?.id;
-            
-            if (!priceListId) {
-              if (mode === 'update') {
-                result.skipped += group.rows.length;
-                continue;
-              }
-
-              const { data: newPriceList, error: priceListError } = await supabase
-                .from('price_lists')
-                .insert({
-                  customer_id: customerId,
-                  list_name: listName,
-                  currency,
-                  valid_from: firstRow.row.valid_from || new Date().toISOString().split('T')[0],
-                  valid_to: firstRow.row.valid_to || null
-                })
-                .select('id')
-                .single();
-
-              if (priceListError) {
-                result.errors.push(`Gruppo ${groupKey}: Errore creazione listino - ${priceListError.message}`);
-                result.skipped += group.rows.length;
-                continue;
-              }
-
-              priceListId = newPriceList.id;
-              priceListMap.set(priceListKey, { id: priceListId, customer_id: customerId, list_name: listName, currency, customers: { name: customerName } });
-            }
-            
-            group.customerId = customerId;
-            group.priceListId = priceListId;
-          }
-          
-          // Process each row in the group
-          for (const { row, rowNumber } of group.rows) {
-            // Skip if critical data missing
-            if (!row.product_code && !row.product_name) {
-              result.skipped++;
-              result.log.push({
-                timestamp: new Date().toISOString(),
-                operation: 'skip',
-                recordKey: `row_${rowNumber}`,
-                rowNumber
-              });
-              continue;
-            }
-
-          // Find product - normalize and try multiple lookups
-          const productCode = (row.product_code || row.product_name || '').trim().toLowerCase();
-          let product = productMap.get(productCode);
-          
-          // Try additional normalization if not found
-          if (!product && productCode) {
-            // Remove special characters and try again
-            const normalizedCode = productCode.replace(/[^a-z0-9]/g, '');
-            for (const [key, value] of productMap.entries()) {
-              if (key.replace(/[^a-z0-9]/g, '') === normalizedCode) {
-                product = value;
-                break;
-              }
-            }
-          }
-          
-          if (!product) {
-            result.errors.push(`Riga ${rowNumber}: Prodotto non trovato - ${row.product_code || row.product_name} (cercato: ${productCode})`);
+          if (!customerName || !listName) {
+            result.errors.push(`Missing customer name or list name for group: ${groupKey}`);
+            result.skipped += rows.length;
             continue;
           }
 
-          // Calculate price if missing
-          let unitPrice = row.unit_price;
-          if (!unitPrice || unitPrice <= 0) {
-            // Get base cost from product and apply default margin
-            const baseMargin = row.margin_percent || 30; // Default 30% margin
-            unitPrice = (product.base_cost || 0) * (1 + baseMargin / 100);
+          console.log(`Processing group: ${customerName} - ${listName} v${listVersion} (${rows.length} items)`);
+
+          // Prepare items for the RPC function
+          const items = [];
+          let groupSkipped = 0;
+          
+          for (const row of rows) {
+            const cefCode = row.cef_code?.trim();
+            if (!cefCode) {
+              result.errors.push(`Missing CEF code for row in ${listName}`);
+              groupSkipped++;
+              continue;
+            }
+
+            // Resolve product using enhanced lookup
+            const product = resolveProduct(cefCode);
+            if (!product) {
+              result.errors.push(`Product not found for CEF code: ${cefCode}`);
+              groupSkipped++;
+              continue;
+            }
+
+            const unitPrice = parseFloat(row.unit_price?.toString() || '0');
+            const marginPercent = row.margin_percent ? parseFloat(row.margin_percent.toString()) : null;
+            const marginEuro = row.margin_euro ? parseFloat(row.margin_euro.toString()) : null;
+
+            if (unitPrice <= 0) {
+              result.errors.push(`Invalid unit price for CEF code: ${cefCode}`);
+              groupSkipped++;
+              continue;
+            }
+
+            items.push({
+              propeller_id: product.id,
+              unit_price: unitPrice,
+              margin_percent: marginPercent,
+              margin_euro: marginEuro,
+              pricing_method: row.pricing_method || 'margin_percent',
+              min_quantity: parseInt(row.min_quantity?.toString() || '1'),
+              notes: row.notes || null
+            });
           }
 
-          // Check for existing price list item
-          const { data: existingItem } = await supabase
-            .from('price_list_items')
-            .select('id, unit_price')
-            .eq('price_list_id', group.priceListId!)
-            .eq('propeller_id', product.id)
-            .maybeSingle();
-
-          if (existingItem) {
-            // Handle conflict resolution
-            const conflictKey = `price_${rowNumber}`;
-            const resolution = conflictResolutions[conflictKey] || 'use_new';
-            
-            if (resolution === 'skip_record') {
-              result.skipped++;
-              continue;
-            }
-            
-            if (resolution === 'keep_existing') {
-              result.skipped++;
-              result.log.push({
-                timestamp: new Date().toISOString(),
-                operation: 'skip',
-                recordKey: `${groupKey}_${product.id}`,
-                oldValue: existingItem.unit_price,
-                rowNumber
-              });
-              continue;
-            }
-
-            if (mode === 'append') {
-              result.skipped++;
-              continue;
-            }
-
-            // Update existing item
-            const { error: updateError } = await supabase
-              .from('price_list_items')
-              .update({
-                unit_price: unitPrice,
-                margin_percent: row.margin_percent,
-                margin_euro: row.margin_euro,
-                min_quantity: row.min_quantity || 1,
-                notes: row.notes
-              })
-              .eq('id', existingItem.id);
-
-            if (updateError) {
-              result.errors.push(`Riga ${rowNumber}: Errore aggiornamento prezzo - ${updateError.message}`);
-              continue;
-            }
-
-            result.updated++;
-            result.log.push({
-              timestamp: new Date().toISOString(),
-              operation: 'update_item',
-              recordKey: `${groupKey}_${product.id}`,
-              oldValue: existingItem.unit_price,
-              newValue: unitPrice,
-              rowNumber
-            });
-
-          } else {
-            // Create new item
-            const { error: insertError } = await supabase
-              .from('price_list_items')
-              .insert({
-                price_list_id: group.priceListId!,
-                propeller_id: product.id,
-                unit_price: unitPrice,
-                margin_percent: row.margin_percent,
-                margin_euro: row.margin_euro,
-                min_quantity: row.min_quantity || 1,
-                notes: row.notes,
-                pricing_method: row.margin_percent ? 'margin_percent' : (row.margin_euro ? 'margin_euro' : 'fixed_price')
-              });
-
-            if (insertError) {
-              result.errors.push(`Riga ${rowNumber}: Errore inserimento prezzo - ${insertError.message}`);
-              continue;
-            }
-
-            result.inserted++;
-            result.log.push({
-              timestamp: new Date().toISOString(),
-              operation: 'create_item',
-              recordKey: `${groupKey}_${product.id}`,
-              newValue: unitPrice,
-              rowNumber
-            });
-           }
+          if (items.length === 0) {
+            result.skipped += rows.length;
+            continue;
           }
-           
+
+          // Call the atomic RPC function
+          const { data: rpcResult, error: rpcError } = await supabase
+            .rpc('import_price_list_group', {
+              p_customer_name: customerName,
+              p_list_name: listName,
+              p_list_version: listVersion,
+              p_currency: firstRow.currency || 'EUR',
+              p_valid_from: firstRow.valid_from || new Date().toISOString().split('T')[0],
+              p_valid_to: firstRow.valid_to || null,
+              p_notes: firstRow.notes || null,
+              p_items: JSON.stringify(items)
+            });
+
+          if (rpcError || !rpcResult) {
+            console.error('RPC Error:', rpcError);
+            result.errors.push(`Failed to import group ${listName}: ${rpcError?.message || 'Unknown error'}`);
+            result.skipped += rows.length;
+            continue;
+          }
+
+          // Update result counters - rpcResult is JSONB, parse it properly
+          const resultData = rpcResult as any;
+          result.inserted += resultData.inserted || 0;
+          result.updated += resultData.updated || 0;
+          result.skipped += groupSkipped;
+
+          if (resultData.errors && Array.isArray(resultData.errors)) {
+            result.errors.push(...resultData.errors);
+          }
+
+          // Add operation log
+          result.logs.push({
+            customer: customerName,
+            listName,
+            listVersion,
+            action: 'created',
+            details: `Processed ${items.length} items (${resultData.inserted || 0} inserted, ${resultData.updated || 0} updated)`,
+            timestamp: new Date().toISOString()
+          });
+
         } catch (error) {
-          result.errors.push(`Gruppo ${groupKey}: ${error instanceof Error ? error.message : 'Errore sconosciuto'}`);
-          result.skipped += group.rows.length;
+          console.error('Error processing group:', error);
+          result.errors.push(`Error processing group ${groupKey}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+          result.skipped += rows.length;
         }
       }
 
     } catch (error) {
-      result.errors.push(`Errore generale: ${error instanceof Error ? error.message : 'Errore sconosciuto'}`);
+      console.error('Import error:', error);
+      result.errors.push(`Import failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      toast.error("Import failed");
     } finally {
       setIsImporting(false);
     }
@@ -305,7 +260,7 @@ export function usePriceListImportUpsert() {
       summary: {
         total_operations: log.length,
         by_type: log.reduce((acc, op) => {
-          acc[op.operation] = (acc[op.operation] || 0) + 1;
+          acc[op.action] = (acc[op.action] || 0) + 1;
           return acc;
         }, {} as Record<string, number>)
       }
@@ -324,8 +279,7 @@ export function usePriceListImportUpsert() {
 
   return {
     isImporting,
-    setIsImporting,
     upsertPriceListData,
     downloadImportLog
   };
-}
+};

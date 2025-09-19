@@ -40,7 +40,7 @@ export function PriceListConflictDialog({
   onResolveAll
 }: PriceListConflictDialogProps) {
   const [resolutions, setResolutions] = useState<Record<string, PriceListConflictResolution>>({});
-  const [globalResolution, setGlobalResolution] = useState<PriceListConflictResolution>('use_new');
+  const [globalResolution, setGlobalResolution] = useState<PriceListConflictResolution>('update');
 
   const handleResolutionChange = (conflictId: string, resolution: PriceListConflictResolution) => {
     setResolutions(prev => ({
@@ -65,22 +65,9 @@ export function PriceListConflictDialog({
     return String(value);
   };
 
-  const getConflictTypeLabel = (type: PriceListConflict['type']) => {
-    switch (type) {
-      case 'customer': return 'Cliente';
-      case 'price_list': return 'Listino';
-      case 'price_list_item': return 'Prezzo';
-      default: return 'Dato';
-    }
-  };
-
-  const getConflictTypeColor = (type: PriceListConflict['type']) => {
-    switch (type) {
-      case 'customer': return 'default';
-      case 'price_list': return 'secondary';
-      case 'price_list_item': return 'outline';
-      default: return 'default';
-    }
+  // Generate unique IDs for conflicts based on customer and list name
+  const getConflictId = (conflict: PriceListConflict, index: number): string => {
+    return `${conflict.customer_name}_${conflict.list_name}_${conflict.list_version || 'v1'}_${index}`;
   };
 
   return (
@@ -103,20 +90,20 @@ export function PriceListConflictDialog({
             
             <RadioGroup 
               value={globalResolution} 
-              onValueChange={(value) => setGlobalResolution(value as PriceListConflictResolution)}
+              onValueChange={setGlobalResolution}
               className="flex flex-wrap gap-6"
             >
               <div className="flex items-center space-x-2">
-                <RadioGroupItem value="use_new" id="global-new" />
-                <Label htmlFor="global-new">Usa Nuovi Valori</Label>
+                <RadioGroupItem value="update" id="global-update" />
+                <Label htmlFor="global-update">Aggiorna Esistenti</Label>
               </div>
               <div className="flex items-center space-x-2">
-                <RadioGroupItem value="keep_existing" id="global-keep" />
-                <Label htmlFor="global-keep">Mantieni Esistenti</Label>
+                <RadioGroupItem value="skip" id="global-skip" />
+                <Label htmlFor="global-skip">Salta Conflitti</Label>
               </div>
               <div className="flex items-center space-x-2">
-                <RadioGroupItem value="skip_record" id="global-skip" />
-                <Label htmlFor="global-skip">Salta Record</Label>
+                <RadioGroupItem value="append" id="global-append" />
+                <Label htmlFor="global-append">Crea Nuove Versioni</Label>
               </div>
             </RadioGroup>
 
@@ -139,76 +126,74 @@ export function PriceListConflictDialog({
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Riga</TableHead>
-                    <TableHead>Tipo</TableHead>
-                    <TableHead>Campo</TableHead>
-                    <TableHead>Valore Esistente</TableHead>
-                    <TableHead>Nuovo Valore</TableHead>
+                    <TableHead>Cliente</TableHead>
+                    <TableHead>Listino</TableHead>
+                    <TableHead>Versione</TableHead>
+                    <TableHead>Elementi</TableHead>
                     <TableHead>Risoluzione</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {conflicts.map((conflict) => (
-                    <TableRow key={conflict.id}>
-                      <TableCell>
-                        <Badge variant="outline">
-                          {conflict.rowNumber}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant={getConflictTypeColor(conflict.type)}>
-                          {getConflictTypeLabel(conflict.type)}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="font-medium">
-                        {conflict.field}
-                      </TableCell>
-                      <TableCell>
-                        <code className="text-xs bg-muted px-2 py-1 rounded">
-                          {formatValue(conflict.existingValue)}
-                        </code>
-                      </TableCell>
-                      <TableCell>
-                        <code className="text-xs bg-primary/10 px-2 py-1 rounded">
-                          {formatValue(conflict.newValue)}
-                        </code>
-                      </TableCell>
-                      <TableCell>
-                        <RadioGroup
-                          value={resolutions[conflict.id] || 'use_new'}
-                          onValueChange={(value) => 
-                            handleResolutionChange(conflict.id, value as PriceListConflictResolution)
-                          }
-                          className="flex gap-2"
-                        >
-                          <div className="flex items-center space-x-1">
-                            <RadioGroupItem 
-                              value="use_new" 
-                              id={`${conflict.id}-new`}
-                              className="h-3 w-3"
-                            />
-                            <Label htmlFor={`${conflict.id}-new`} className="text-xs">Nuovo</Label>
+                  {conflicts.map((conflict, index) => {
+                    const conflictId = getConflictId(conflict, index);
+                    return (
+                      <TableRow key={conflictId}>
+                        <TableCell className="font-medium">
+                          {conflict.customer_name}
+                        </TableCell>
+                        <TableCell>
+                          {conflict.list_name}
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="outline">
+                            {conflict.list_version || 'v1'}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <div className="text-sm">
+                            <div>{conflict.incoming_data.length} elementi da importare</div>
+                            <div className="text-muted-foreground">
+                              Listino esistente trovato
+                            </div>
                           </div>
-                          <div className="flex items-center space-x-1">
-                            <RadioGroupItem 
-                              value="keep_existing" 
-                              id={`${conflict.id}-keep`}
-                              className="h-3 w-3"
-                            />
-                            <Label htmlFor={`${conflict.id}-keep`} className="text-xs">Esistente</Label>
-                          </div>
-                          <div className="flex items-center space-x-1">
-                            <RadioGroupItem 
-                              value="skip_record" 
-                              id={`${conflict.id}-skip`}
-                              className="h-3 w-3"
-                            />
-                            <Label htmlFor={`${conflict.id}-skip`} className="text-xs">Salta</Label>
-                          </div>
-                        </RadioGroup>
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                        </TableCell>
+                        <TableCell>
+                          <RadioGroup
+                            value={resolutions[conflictId] || 'update'}
+                            onValueChange={(value) => 
+                              handleResolutionChange(conflictId, value as any)
+                            }
+                            className="flex gap-2"
+                          >
+                            <div className="flex items-center space-x-1">
+                              <RadioGroupItem 
+                                value="update" 
+                                id={`${conflictId}-update`}
+                                className="h-3 w-3"
+                              />
+                              <Label htmlFor={`${conflictId}-update`} className="text-xs">Aggiorna</Label>
+                            </div>
+                            <div className="flex items-center space-x-1">
+                              <RadioGroupItem 
+                                value="skip" 
+                                id={`${conflictId}-skip`}
+                                className="h-3 w-3"
+                              />
+                              <Label htmlFor={`${conflictId}-skip`} className="text-xs">Salta</Label>
+                            </div>
+                            <div className="flex items-center space-x-1">
+                              <RadioGroupItem 
+                                value="append" 
+                                id={`${conflictId}-append`}
+                                className="h-3 w-3"
+                              />
+                              <Label htmlFor={`${conflictId}-append`} className="text-xs">Nuova Ver.</Label>
+                            </div>
+                          </RadioGroup>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
                 </TableBody>
               </Table>
             </ScrollArea>

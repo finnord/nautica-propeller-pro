@@ -529,6 +529,7 @@ export type Database = {
           customer_id: string
           id: string
           list_name: string
+          list_version: string
           notes: string | null
           updated_at: string
           valid_from: string
@@ -540,6 +541,7 @@ export type Database = {
           customer_id: string
           id?: string
           list_name: string
+          list_version?: string
           notes?: string | null
           updated_at?: string
           valid_from?: string
@@ -551,6 +553,7 @@ export type Database = {
           customer_id?: string
           id?: string
           list_name?: string
+          list_version?: string
           notes?: string | null
           updated_at?: string
           valid_from?: string
@@ -786,6 +789,19 @@ export type Database = {
       calculate_rubber_weight: {
         Args: { density_g_cm3: number; volume_cm3: number }
         Returns: number
+      }
+      import_price_list_group: {
+        Args: {
+          p_currency?: string
+          p_customer_name: string
+          p_items?: Json
+          p_list_name: string
+          p_list_version?: string
+          p_notes?: string
+          p_valid_from?: string
+          p_valid_to?: string
+        }
+        Returns: Json
       }
     }
     Enums: {

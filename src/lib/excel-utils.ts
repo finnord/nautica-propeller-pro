@@ -461,8 +461,116 @@ export const priceListTemplate: TemplateSheet = {
 };
 
 export const downloadPriceListTemplate = () => {
+  const wb = XLSX.utils.book_new();
+  
+  // Create template data with headers and example rows
+  const templateData = [
+    {
+      customer_name: 'Cliente Esempio',
+      list_name: 'Listino Standard 2024',
+      list_version: 'v1',
+      list_identifier: 'STD2024_v1',
+      currency: 'EUR',
+      valid_from: '2024-01-01',
+      valid_to: '2024-12-31',
+      cef_code: 'CEF001',
+      unit_price: 150.00,
+      margin_percent: 25,
+      margin_euro: null,
+      pricing_method: 'margin_percent',
+      min_quantity: 1,
+      notes: 'Esempio note prodotto'
+    },
+    {
+      customer_name: 'Cliente Esempio',
+      list_name: 'Listino Standard 2024',
+      list_version: 'v1',
+      list_identifier: 'STD2024_v1',
+      currency: 'EUR',
+      valid_from: '2024-01-01',
+      valid_to: '2024-12-31',
+      cef_code: 'CEF002',
+      unit_price: 200.00,
+      margin_percent: null,
+      margin_euro: 50,
+      pricing_method: 'margin_euro',
+      min_quantity: 1,
+      notes: null
+    }
+  ];
+
+  // Convert to worksheet
+  const ws = XLSX.utils.json_to_sheet(templateData);
+  
+  // Set column widths
+  const colWidths = [
+    { wch: 20 }, // customer_name
+    { wch: 25 }, // list_name
+    { wch: 12 }, // list_version
+    { wch: 18 }, // list_identifier
+    { wch: 10 }, // currency
+    { wch: 12 }, // valid_from
+    { wch: 12 }, // valid_to
+    { wch: 12 }, // cef_code
+    { wch: 12 }, // unit_price
+    { wch: 15 }, // margin_percent
+    { wch: 12 }, // margin_euro
+    { wch: 18 }, // pricing_method
+    { wch: 12 }, // min_quantity
+    { wch: 25 }  // notes
+  ];
+  ws['!cols'] = colWidths;
+  
+  XLSX.utils.book_append_sheet(wb, ws, 'PriceLists');
+
+  // Instructions sheet
+  const instructions = [
+    ['ISTRUZIONI PER L\'IMPORTAZIONE LISTINI PREZZI'],
+    [''],
+    ['STRUTTURA DEL FILE:'],
+    ['• Il file deve contenere almeno il foglio "PriceLists"'],
+    ['• Ogni riga rappresenta un elemento di listino prezzi'],
+    ['• Le colonne obbligatorie sono evidenziate nel template'],
+    [''],
+    ['CAMPI OBBLIGATORI:'],
+    ['• customer_name: Nome del cliente (testo)'],
+    ['• list_name: Nome del listino (testo)'],
+    ['• cef_code: Codice prodotto CEF (testo)'],
+    ['• unit_price: Prezzo unitario (numero decimale)'],
+    [''],
+    ['CAMPI FACOLTATIVI:'],
+    ['• list_version: Versione del listino (default: v1)'],
+    ['• list_identifier: Identificatore univoco del listino'],
+    ['• currency: Valuta (default: EUR)'],
+    ['• valid_from: Data inizio validità (formato: YYYY-MM-DD)'],
+    ['• valid_to: Data fine validità (formato: YYYY-MM-DD)'],
+    ['• margin_percent: Margine percentuale (numero)'],
+    ['• margin_euro: Margine in euro (numero)'],
+    ['• pricing_method: Metodo di pricing (margin_percent o margin_euro)'],
+    ['• min_quantity: Quantità minima (numero intero, default: 1)'],
+    ['• notes: Note aggiuntive (testo)'],
+    [''],
+    ['GESTIONE VERSIONI:'],
+    ['• list_version permette di gestire versioni multiple dello stesso listino'],
+    ['• Se omesso, viene usato "v1" come default'],
+    ['• Listini con stessa combinazione cliente+nome+versione vengono aggiornati'],
+    [''],
+    ['NOTE IMPORTANTI:'],
+    ['• Se un listino esiste già, verrà aggiornato atomicamente'],
+    ['• I codici CEF vengono risolti in modo case-insensitive'],
+    ['• Il pricing_method determina quale margine viene utilizzato'],
+    ['• Le date devono essere nel formato YYYY-MM-DD'],
+    ['• I numeri decimali devono usare il punto come separatore'],
+    [''],
+    ['ESEMPIO:'],
+    ['Vedere il foglio "PriceLists" per esempi di righe valide']
+  ];
+
+  const wsInstructions = XLSX.utils.aoa_to_sheet(instructions);
+  wsInstructions['!cols'] = [{ wch: 80 }];
+  XLSX.utils.book_append_sheet(wb, wsInstructions, 'Istruzioni');
+
   try {
-    const wb = XLSX.utils.book_new();
     
     // Add info sheet
     const infoSheet = XLSX.utils.aoa_to_sheet([

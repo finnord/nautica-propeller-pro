@@ -234,46 +234,48 @@ export const PriceListImportDialog = ({ open, onOpenChange, onSuccess }: PriceLi
               </div>
             </div>
 
-            <div className="border rounded-lg overflow-hidden">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Riga</TableHead>
-                    <TableHead>Codice</TableHead>
-                    <TableHead>Cliente</TableHead>
-                    <TableHead>Listino</TableHead>
-                    <TableHead>Prezzo</TableHead>
-                    <TableHead>Margine</TableHead>
-                    <TableHead>Stato</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {importData.slice(0, 50).map((row, index) => (
-                    <TableRow key={index}>
-                      <TableCell>{index + 2}</TableCell>
-                      <TableCell className="font-mono">{row.product_code || row.product_name}</TableCell>
-                      <TableCell>{row.customer_name}</TableCell>
-                      <TableCell>{row.list_name}</TableCell>
-                      <TableCell>€{(row.unit_price || 0).toFixed(2)}</TableCell>
-                      <TableCell>
-                        {row.margin_percent !== undefined ? (
-                          <div className="text-sm">
-                            <div>{row.margin_percent.toFixed(1)}%</div>
-                            <div className="text-muted-foreground">€{row.margin_euro?.toFixed(2)}</div>
-                          </div>
-                        ) : '-'}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="secondary">
-                          <CheckCircle className="h-3 w-3 mr-1" />
-                          Pronto
-                        </Badge>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
+                <div className="border rounded-lg overflow-hidden">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Riga</TableHead>
+                        <TableHead>Codice CEF</TableHead>
+                        <TableHead>Cliente</TableHead>
+                        <TableHead>Listino</TableHead>
+                        <TableHead>Versione</TableHead>
+                        <TableHead>Prezzo</TableHead>
+                        <TableHead>Margine</TableHead>
+                        <TableHead>Stato</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {importData.slice(0, 50).map((row, index) => (
+                        <TableRow key={index}>
+                          <TableCell>{index + 2}</TableCell>
+                          <TableCell className="font-mono">{row.cef_code}</TableCell>
+                          <TableCell>{row.customer_name}</TableCell>
+                          <TableCell>{row.list_name}</TableCell>
+                          <TableCell>{row.list_version || 'v1'}</TableCell>
+                          <TableCell>€{(row.unit_price || 0).toFixed(2)}</TableCell>
+                          <TableCell>
+                            {row.margin_percent !== undefined ? (
+                              <div className="text-sm">
+                                <div>{row.margin_percent.toFixed(1)}%</div>
+                                <div className="text-muted-foreground">€{row.margin_euro?.toFixed(2)}</div>
+                              </div>
+                            ) : '-'}
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="secondary">
+                              <CheckCircle className="h-3 w-3 mr-1" />
+                              Pronto
+                            </Badge>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
 
             {importData.length > 50 && (
               <p className="text-sm text-muted-foreground text-center">

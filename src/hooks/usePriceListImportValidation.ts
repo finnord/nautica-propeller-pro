@@ -12,13 +12,12 @@ export interface ValidationMessage {
 }
 
 export interface PriceListConflict {
-  id: string;
-  recordKey: string;
-  field: string;
-  existingValue: any;
-  newValue: any;
-  rowNumber: number;
-  type: 'customer' | 'price_list' | 'price_list_item';
+  customer_name: string;
+  list_name: string;
+  list_version?: string;
+  existing_data: any;
+  incoming_data: PriceListImportRow[];
+  conflicting_fields: string[];
 }
 
 export interface PriceListValidationResult {
@@ -35,14 +34,16 @@ export interface PriceListValidationResult {
 }
 
 export interface PriceListImportRow {
-  product_code?: string;
-  product_name?: string;
   customer_name?: string;
   customer_code?: string;
   list_name?: string;
+  list_version?: string;
+  list_identifier?: string;
+  cef_code?: string;
   unit_price?: number;
   margin_percent?: number;
   margin_euro?: number;
+  pricing_method?: string;
   min_quantity?: number;
   notes?: string;
   currency?: string;
@@ -65,70 +66,101 @@ export function usePriceListImportValidation() {
     let potentialConflicts = 0;
 
     try {
-      // Get existing data for conflict detection
-      const [{ data: existingCustomers }, { data: existingPriceLists }, { data: existingItems }] = await Promise.all([
-        supabase.from('customers').select('id, name, vat_number'),
-        supabase.from('price_lists').select('id, customer_id, list_name, currency, customers(name)'),
-        supabase.from('price_list_items').select('id, price_list_id, propeller_id, unit_price, price_lists(list_name, customers(name))')
-      ]);
+      // Fetch existing customers
+      const { data: existingCustomers } = await supabase
+        .from('customers')
+        .select('id, name');
 
-      const customerMap = new Map(existingCustomers?.map(c => [c.name.toLowerCase(), c]) || []);
-      const priceListMap = new Map(existingPriceLists?.map(pl => [`${pl.customers?.name?.toLowerCase()}_${pl.list_name.toLowerCase()}`, pl]) || []);
+      const customerIds = new Map<string, string>();
+      if (existingCustomers) {
+        existingCustomers.forEach(customer => {
+          customerIds.set(customer.name.toLowerCase().trim(), customer.id);
+        });
+      }
 
+      // Group by customer, price list, and version for conflict detection
+      const groups = new Map<string, PriceListImportRow[]>();
+      
+      data.forEach(row => {
+        const listVersion = row.list_version?.trim() || 'v1';
+        const groupKey = `${row.customer_name?.toLowerCase().trim()}_${row.list_name?.toLowerCase().trim()}_${listVersion.toLowerCase()}`;
+        if (!groups.has(groupKey)) {
+          groups.set(groupKey, []);
+        }
+        groups.get(groupKey)!.push(row);
+      });
+
+      // Check for existing price lists (including list_version)
+      const { data: existingPriceLists } = await supabase
+        .from('price_lists')
+        .select('id, customer_id, list_name, list_version, customers!inner(name)')
+        .in('customer_id', Array.from(customerIds.values()).filter(Boolean));
+
+      const existingPriceListsMap = new Map<string, any>();
+      if (existingPriceLists) {
+        existingPriceLists.forEach(priceList => {
+          const key = `${priceList.customers.name.toLowerCase().trim()}_${priceList.list_name.toLowerCase().trim()}_${(priceList.list_version || 'v1').toLowerCase()}`;
+          existingPriceListsMap.set(key, priceList);
+        });
+      }
+
+      // Validate each row
       for (let i = 0; i < data.length; i++) {
         const row = data[i];
         const rowNumber = i + 2; // Excel row number (starting from 2)
 
         // CRITICAL validations - these BLOCK import
-        if (!row.product_code && !row.product_name) {
+        if (!row.cef_code?.trim()) {
           messages.push({
             level: 'critical',
-            field: 'product_code/product_name',
-            message: 'Almeno uno tra codice prodotto o nome prodotto è obbligatorio',
+            field: 'cef_code',
+            message: 'Codice CEF è obbligatorio',
+            rowNumber
+          });
+          continue;
+        }
+
+        if (!row.customer_name?.trim()) {
+          messages.push({
+            level: 'critical',
+            field: 'customer_name',
+            message: 'Nome cliente è obbligatorio',
+            rowNumber
+          });
+          continue;
+        }
+
+        if (!row.list_name?.trim()) {
+          messages.push({
+            level: 'critical',
+            field: 'list_name',
+            message: 'Nome listino è obbligatorio',
+            rowNumber
+          });
+          continue;
+        }
+
+        if (!row.unit_price || row.unit_price <= 0) {
+          messages.push({
+            level: 'critical',
+            field: 'unit_price',
+            message: 'Prezzo unitario deve essere maggiore di zero',
             rowNumber
           });
           continue;
         }
 
         // IMPORTANT validations - warnings but allow import
-        if (!row.customer_name) {
+        if (!row.list_version?.trim()) {
           messages.push({
             level: 'important',
-            field: 'customer_name',
-            message: 'Nome cliente mancante - verrà usato "Cliente Generico"',
+            field: 'list_version',
+            message: 'Versione listino mancante - verrà usato "v1"',
             rowNumber
           });
         }
 
-        if (!row.list_name) {
-          messages.push({
-            level: 'important',
-            field: 'list_name',
-            message: 'Nome listino mancante - verrà usato "Listino Standard"',
-            rowNumber
-          });
-        }
-
-        if (!row.unit_price || row.unit_price <= 0) {
-          messages.push({
-            level: 'important',
-            field: 'unit_price',
-            message: 'Prezzo unitario mancante o non valido - verrà calcolato dal costo base',
-            rowNumber
-          });
-        }
-
-        // SUGGESTED validations - improvements
-        if (!row.margin_percent && !row.margin_euro) {
-          messages.push({
-            level: 'suggested',
-            field: 'margin',
-            message: 'Margine non specificato - considera di aggiungere margine percentuale o fisso',
-            rowNumber
-          });
-        }
-
-        if (!row.currency) {
+        if (!row.currency?.trim()) {
           messages.push({
             level: 'suggested',
             field: 'currency',
@@ -137,55 +169,48 @@ export function usePriceListImportValidation() {
           });
         }
 
-        // Conflict detection
-        const customerName = (row.customer_name || 'Cliente Generico').toLowerCase();
-        const listName = (row.list_name || 'Listino Standard').toLowerCase();
+        if (!row.margin_percent && !row.margin_euro) {
+          messages.push({
+            level: 'suggested',
+            field: 'margin',
+            message: 'Margine non specificato - considera di aggiungere margine percentuale o fisso',
+            rowNumber
+          });
+        }
+      }
+
+      // Process groups for conflict detection
+      for (const [groupKey, rows] of groups.entries()) {
+        const firstRow = rows[0];
+        const customerName = firstRow.customer_name?.toLowerCase().trim();
+        const listName = firstRow.list_name?.toLowerCase().trim();
         
-        // Check for existing customer conflicts
-        const existingCustomer = customerMap.get(customerName);
-        if (!existingCustomer) {
+        if (!customerName || !listName) continue;
+
+        // Check for new customers
+        if (!customerIds.has(customerName)) {
           newCustomers++;
         }
 
-        // Check for existing price list conflicts
-        const priceListKey = `${customerName}_${listName}`;
-        const existingPriceList = priceListMap.get(priceListKey);
-        if (!existingPriceList) {
-          newPriceLists++;
-        } else {
-          // Check for currency conflicts
-          if (row.currency && existingPriceList.currency !== row.currency) {
-            conflicts.push({
-              id: `currency_${i}`,
-              recordKey: `${customerName}_${listName}`,
-              field: 'currency',
-              existingValue: existingPriceList.currency,
-              newValue: row.currency,
-              rowNumber,
-              type: 'price_list'
-            });
-            potentialConflicts++;
-          }
-        }
-
-        // Check for existing item conflicts (approximate - would need product matching)
-        if (existingPriceList && row.unit_price) {
-          // This is a simplified check - in real implementation we'd match by product
-          updatedItems++;
-          
-          // Create a conflict for demonstration
+        // Check for conflicts with existing price lists
+        const listVersion = firstRow.list_version?.trim() || 'v1';
+        const versionedGroupKey = `${customerName}_${listName}_${listVersion.toLowerCase()}`;
+        const existingPriceList = existingPriceListsMap.get(versionedGroupKey);
+        
+        if (existingPriceList) {
           conflicts.push({
-            id: `price_${i}`,
-            recordKey: `${customerName}_${listName}_${row.product_code}`,
-            field: 'unit_price',
-            existingValue: 'Prezzo esistente', // Would be actual existing price
-            newValue: row.unit_price,
-            rowNumber,
-            type: 'price_list_item'
+            customer_name: firstRow.customer_name || '',
+            list_name: firstRow.list_name || '',
+            list_version: listVersion,
+            existing_data: existingPriceList,
+            incoming_data: rows,
+            conflicting_fields: ['list_name', 'list_version']
           });
+          updatedItems += rows.length;
           potentialConflicts++;
         } else {
-          newItems++;
+          newPriceLists++;
+          newItems += rows.length;
         }
       }
 
