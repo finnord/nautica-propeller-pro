@@ -23,10 +23,10 @@ const queryClient = new QueryClient();
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
-      <KeyboardShortcutsProvider>
-        <Toaster />
-        <Sonner />
-        <BrowserRouter>
+      <Toaster />
+      <Sonner />
+      <BrowserRouter>
+        <KeyboardShortcutsProvider>
         <Routes>
           <Route path="/" element={<Dashboard />} />
           <Route path="/products" element={<Products />} />
@@ -42,9 +42,9 @@ const App = () => (
           <Route path="/import-export" element={<ImportExport />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
-        </Routes>
+          </Routes>
+        </KeyboardShortcutsProvider>
       </BrowserRouter>
-      </KeyboardShortcutsProvider>
     </TooltipProvider>
   </QueryClientProvider>
 );
