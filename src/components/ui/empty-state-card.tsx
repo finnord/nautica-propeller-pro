@@ -11,13 +11,20 @@ interface EmptyStateCardProps {
     onClick: () => void;
     icon?: LucideIcon;
   };
+  actions?: Array<{
+    icon?: LucideIcon;
+    label: string;
+    onClick: () => void;
+    variant?: string;
+  }>;
 }
 
 export const EmptyStateCard = ({ 
   icon: Icon, 
   title, 
   description, 
-  actionButton 
+  actionButton,
+  actions
 }: EmptyStateCardProps) => {
   return (
     <Card className="card-elevated">
@@ -30,6 +37,20 @@ export const EmptyStateCard = ({
             {actionButton.icon && <actionButton.icon className="h-4 w-4 mr-2" />}
             {actionButton.label}
           </Button>
+        )}
+        {actions && actions.length > 0 && (
+          <div className="flex flex-wrap gap-2 justify-center">
+            {actions.map((action, index) => (
+              <Button
+                key={index}
+                variant={action.variant as any || "outline"}
+                onClick={action.onClick}
+              >
+                {action.icon && <action.icon className="h-4 w-4 mr-2" />}
+                {action.label}
+              </Button>
+            ))}
+          </div>
         )}
       </CardContent>
     </Card>

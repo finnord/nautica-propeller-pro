@@ -233,6 +233,7 @@ export default function RFQ() {
         {/* RFQ Display */}
         {filteredRFQs.length === 0 ? (
           <EmptyStateCard
+            icon={Plus}
             title="Nessuna RFQ trovata"
             description="Prova a modificare i filtri o crea una nuova richiesta di quotazione"
             actions={[{

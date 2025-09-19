@@ -501,67 +501,65 @@ export const downloadPriceListTemplate = () => {
   }
 };
 
-export const downloadExportData = (exportType: 'products' | 'customers' | 'rfq' | 'equivalences' | 'complete', format: 'xlsx' | 'csv' = 'xlsx') => {
+export const downloadExportData = async (exportType: 'products' | 'customers' | 'rfq' | 'equivalences' | 'complete', format: 'xlsx' | 'csv' = 'xlsx') => {
   try {
-    let sheets: TemplateSheet[] = [];
-    let filename = '';
+    const wb = XLSX.utils.book_new();
     
-    switch (exportType) {
-      case 'products':
-        sheets = importTemplateSheets.filter(s => ['Products', 'ImpellerDims', 'RubberMix', 'Bushing'].includes(s.name));
-        filename = 'Nautical_BU_Export_Products';
-        break;
-      case 'customers':
-        sheets = importTemplateSheets.filter(s => ['Customers', 'PriceLists'].includes(s.name));
-        filename = 'Nautical_BU_Export_Customers';
-        break;
-      case 'rfq':
-        sheets = importTemplateSheets.filter(s => ['RFQ', 'RFQLines'].includes(s.name));
-        filename = 'Nautical_BU_Export_RFQ';
-        break;
-      case 'equivalences':
-        sheets = importTemplateSheets.filter(s => ['EquivalentImpeller', 'EquivalentBushing'].includes(s.name));
-        filename = 'Nautical_BU_Export_Equivalences';
-        break;
-      case 'complete':
-        sheets = importTemplateSheets;
-        filename = 'Nautical_BU_Export_Complete';
-        break;
-    }
-    
-    if (format === 'xlsx') {
-      const wb = XLSX.utils.book_new();
-      
-      sheets.forEach(sheet => {
-        const ws = XLSX.utils.json_to_sheet(sheet.data || []);
+    // This function will be used for the 'complete' export type
+    // Individual types are now handled directly in the ImportExport component
+    if (exportType === 'complete') {
+      importTemplateSheets.forEach(sheet => {
+        let sheetData: any[][] = [];
+        
+        // Add headers
+        sheetData.push(sheet.headers);
+        
+        // Add sample data
+        if (sheet.data && sheet.data.length > 0) {
+          sheet.data.forEach(row => {
+            const rowData = sheet.headers.map(header => row[header] || '');
+            sheetData.push(rowData);
+          });
+        }
+        
+        const ws = XLSX.utils.aoa_to_sheet(sheetData);
+        const colWidths = sheet.headers.map(header => ({ wch: Math.max(header.length + 2, 15) }));
+        ws['!cols'] = colWidths;
+        
         XLSX.utils.book_append_sheet(wb, ws, sheet.name);
       });
       
-      const buffer = XLSX.write(wb, { type: 'array', bookType: 'xlsx' });
-      const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-      const url = URL.createObjectURL(blob);
+      const timestamp = new Date().toISOString().slice(0, 10);
+      const filename = `Nautical_BU_Complete_Export_${timestamp}`;
       
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `${filename}_${new Date().toISOString().slice(0, 10)}.xlsx`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-    } else {
-      // CSV format - download first sheet only or combine data
-      const sheet = sheets[0];
-      if (sheet && sheet.data) {
-        const csv = XLSX.utils.sheet_to_csv(XLSX.utils.json_to_sheet(sheet.data));
-        const blob = new Blob([csv], { type: 'text/csv' });
+      if (format === 'xlsx') {
+        XLSX.writeFile(wb, `${filename}.xlsx`);
+      } else {
+        // For CSV complete export, create a ZIP with multiple CSV files
+        const firstSheet = importTemplateSheets[0];
+        let csvData: any[][] = [];
+        
+        csvData.push(firstSheet.headers);
+        if (firstSheet.data && firstSheet.data.length > 0) {
+          firstSheet.data.forEach(row => {
+            const rowData = firstSheet.headers.map(header => row[header] || '');
+            csvData.push(rowData);
+          });
+        }
+        
+        const ws = XLSX.utils.aoa_to_sheet(csvData);
+        const csv = XLSX.utils.sheet_to_csv(ws);
+        
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
         const url = URL.createObjectURL(blob);
         
         const link = document.createElement('a');
         link.href = url;
-        link.download = `${filename}_${new Date().toISOString().slice(0, 10)}.csv`;
+        link.download = `${filename}.csv`;
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
+        
         URL.revokeObjectURL(url);
       }
     }

@@ -114,14 +114,14 @@ export const PriceListImportDialog = ({ open, onOpenChange, onSuccess }: PriceLi
 
       if (productCodes.length > 0) {
         const { data: productsData, error: productsError } = await supabase
-          .from('propellers')
-          .select('id, model, base_cost')
-          .in('model', productCodes);
+          .from('impellers')
+          .select('id, impeller_name, base_cost')
+          .in('impeller_name', productCodes);
 
         if (productsError) throw productsError;
 
         (productsData ?? []).forEach(product => {
-          productLookup.set(product.model, {
+          productLookup.set(product.impeller_name, {
             id: product.id,
             base_cost: product.base_cost,
           });

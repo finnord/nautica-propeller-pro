@@ -6,7 +6,8 @@ import { Eye, Edit, FileText, CheckCircle, XCircle, Clock, PauseCircle } from 'l
 import type { RFQ as RFQType, RFQStatus } from '@/types';
 
 interface RFQTableViewProps {
-  rfqs: RFQType[];
+  rfqs?: RFQType[];
+  data?: RFQType[]; // Alternative prop name for compatibility
   onViewDetails: (rfqId: string) => void;
   onEdit: (rfqId: string) => void;
   onQuote?: (rfqId: string) => void;
@@ -63,7 +64,8 @@ const getStatusIcon = (status: RFQStatus) => {
   }
 };
 
-export const RFQTableView = ({ rfqs, onViewDetails, onEdit, onQuote }: RFQTableViewProps) => {
+export const RFQTableView = ({ rfqs, data, onViewDetails, onEdit, onQuote }: RFQTableViewProps) => {
+  const rfqData = data || rfqs || [];
   return (
     <Card className="card-elevated">
       <CardContent className="p-0">
@@ -80,7 +82,7 @@ export const RFQTableView = ({ rfqs, onViewDetails, onEdit, onQuote }: RFQTableV
             </TableRow>
           </TableHeader>
           <TableBody>
-            {rfqs.map((rfq) => {
+            {rfqData.map((rfq) => {
               const StatusIcon = getStatusIcon(rfq.status);
               
               const actions: ActionButton[] = [
