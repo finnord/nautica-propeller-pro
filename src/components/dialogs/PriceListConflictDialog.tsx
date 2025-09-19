@@ -90,7 +90,7 @@ export function PriceListConflictDialog({
             
             <RadioGroup 
               value={globalResolution} 
-              onValueChange={setGlobalResolution}
+              onValueChange={(value) => setGlobalResolution(value as PriceListConflictResolution)}
               className="flex flex-wrap gap-6"
             >
               <div className="flex items-center space-x-2">
@@ -161,7 +161,7 @@ export function PriceListConflictDialog({
                           <RadioGroup
                             value={resolutions[conflictId] || 'update'}
                             onValueChange={(value) => 
-                              handleResolutionChange(conflictId, value as any)
+                              handleResolutionChange(conflictId, value as PriceListConflictResolution)
                             }
                             className="flex gap-2"
                           >

@@ -2,10 +2,7 @@ import { useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
-export interface PriceListConflictResolution {
-  action: 'skip' | 'update' | 'append';
-  newListName?: string;
-}
+export type PriceListConflictResolution = 'skip' | 'update' | 'append';
 
 export interface PriceListUpsertResult {
   inserted: number;

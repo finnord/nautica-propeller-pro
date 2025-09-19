@@ -266,8 +266,9 @@ export default function ImportExport() {
 
   const handleResolveAllConflicts = (resolution: PriceListConflictResolution) => {
     const allResolutions: Record<string, PriceListConflictResolution> = {};
-    validationResult?.conflicts.forEach(conflict => {
-      allResolutions[conflict.id] = resolution;
+    validationResult?.conflicts.forEach((conflict, index) => {
+      const conflictKey = `${conflict.customer_name}_${conflict.list_name}_${conflict.list_version || 'v1'}_${index}`;
+      allResolutions[conflictKey] = resolution;
     });
     setConflictResolutions(allResolutions);
     setShowConflictDialog(false);
@@ -716,7 +717,7 @@ export default function ImportExport() {
                     {/* Actions */}
                     <div className="flex gap-3 pt-4 border-t">
                       <Button 
-                        onClick={() => downloadImportLog(importResult.log)}
+                        onClick={() => downloadImportLog(importResult.logs)}
                         variant="outline"
                       >
                         <Archive className="h-4 w-4 mr-2" />
