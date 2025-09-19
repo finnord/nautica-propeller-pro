@@ -16,12 +16,7 @@ const customerSchema = z.object({
   website: z.string().url('URL non valido').optional().or(z.literal('')),
   vat_number: z.string().optional(),
   annual_revenue_eur: z.number().min(0, 'Il fatturato deve essere positivo').optional(),
-  notes: z.string().optional(),
-  contacts: z.array(z.object({
-    name: z.string().min(1, 'Nome contatto obbligatorio'),
-    email: z.string().email('Email non valida'),
-    phone: z.string().optional()
-  })).optional()
+  notes: z.string().optional()
 });
 
 type CustomerFormData = z.infer<typeof customerSchema>;
@@ -43,8 +38,7 @@ export const NewCustomerDialog = ({ open, onOpenChange, onCustomerCreated }: New
       website: '',
       vat_number: '',
       annual_revenue_eur: undefined,
-      notes: '',
-      contacts: [{ name: '', email: '', phone: '' }]
+      notes: ''
     }
   });
 
@@ -79,7 +73,7 @@ export const NewCustomerDialog = ({ open, onOpenChange, onCustomerCreated }: New
         vat_number: data.vat_number || null,
         annual_revenue_eur: data.annual_revenue_eur || null,
         notes: data.notes || null,
-        contacts: validContacts.length > 0 ? JSON.stringify(validContacts) : null
+        contacts: validContacts.length > 0 ? validContacts : null
       };
 
       const { error } = await supabase
@@ -123,7 +117,7 @@ export const NewCustomerDialog = ({ open, onOpenChange, onCustomerCreated }: New
         </DialogHeader>
 
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+          <form onSubmit={(e) => { console.log('Submit clicked'); form.handleSubmit(onSubmit)(e); }} className="space-y-6">
             {/* Customer Basic Info */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <FormField
