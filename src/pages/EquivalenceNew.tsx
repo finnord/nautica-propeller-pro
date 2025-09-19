@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Button } from '@/components/ui/button';
@@ -7,63 +7,206 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { 
-  ArrowLeft,
-  Save,
-  Ship,
-  Circle
-} from 'lucide-react';
-import { MatchType } from '@/types';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { useToast } from '@/hooks/use-toast';
+import { supabase } from '@/integrations/supabase/client';
+import { ArrowLeft, RefreshCw, Save } from 'lucide-react';
+import { CrossReferenceKind, useCrossMappings } from '@/hooks/useCrossMappings';
+
+type PropellerOption = {
+  id: string;
+  model: string;
+  description: string | null;
+};
+
+type FormState = {
+  propellerId: string;
+  cefCode: string;
+  referenceCode: string;
+  type: CrossReferenceKind;
+  context: string;
+  notes: string;
+};
+
+const initialFormState: FormState = {
+  propellerId: '',
+  cefCode: '',
+  referenceCode: '',
+  type: 'oem',
+  context: '',
+  notes: '',
+};
 
 export default function EquivalenceNew() {
   const navigate = useNavigate();
-  const [selectedTab, setSelectedTab] = useState('impellers');
-  const [isSaving, setIsSaving] = useState(false);
+  const { toast } = useToast();
+  const { createCrossReference, isMutating } = useCrossMappings();
 
-  // Impeller equivalence form
-  const [impellerData, setImpellerData] = useState({
-    source_product_id: '',
-    target_product_id: '',
-    match_type: 'dimensional' as MatchType,
-    dimension_tolerance_mm: 0,
-    material_note: '',
-    bushing_note: '',
-    shaft_profile_note: '',
-    general_note: ''
-  });
+  const [formState, setFormState] = useState<FormState>(initialFormState);
+  const [propellers, setPropellers] = useState<PropellerOption[]>([]);
+  const [propellersLoading, setPropellersLoading] = useState(false);
+  const [propellersError, setPropellersError] = useState<string | null>(null);
 
-  // Bushing equivalence form
-  const [bushingData, setBushingData] = useState({
-    source_bushing_code: '',
-    target_bushing_code: '',
-    match_type: 'form-fit' as MatchType,
-    shaft_profile_compatible: 'yes' as 'yes' | 'no' | 'unknown',
-    material_note: '',
-    general_note: ''
-  });
+  const loadPropellers = useCallback(async () => {
+    setPropellersLoading(true);
+    setPropellersError(null);
+
+    try {
+      const { data, error } = await supabase
+        .from('propellers')
+        .select('id, model, description')
+        .order('model')
+        .limit(200);
+
+      if (error) {
+        throw error;
+      }
+
+      setPropellers((data ?? []).map(item => ({
+        id: item.id,
+        model: item.model,
+        description: item.description,
+      })));
+    } catch (err) {
+      console.error('Error loading propellers list:', err);
+      const message = err instanceof Error ? err.message : 'Impossibile caricare l\'elenco giranti';
+      setPropellersError(message);
+      toast({
+        title: 'Errore di caricamento',
+        description: message,
+        variant: 'destructive',
+      });
+    } finally {
+      setPropellersLoading(false);
+    }
+  }, [toast]);
+
+  useEffect(() => {
+    loadPropellers();
+  }, [loadPropellers]);
+
+  const handlePropellerChange = (value: string) => {
+    setFormState(prev => {
+      const selected = propellers.find(propeller => propeller.id === value);
+      return {
+        ...prev,
+        propellerId: value,
+        cefCode: selected?.model ?? prev.cefCode,
+      };
+    });
+  };
+
+  const handleCefCodeChange = (value: string) => {
+    setFormState(prev => {
+      const trimmed = value.trim();
+      const matched = propellers.find(propeller => propeller.model === trimmed);
+      return {
+        ...prev,
+        cefCode: value,
+        propellerId: matched?.id ?? '',
+      };
+    });
+  };
+
+  const handleTypeChange = (value: CrossReferenceKind) => {
+    setFormState(prev => ({
+      ...prev,
+      type: value,
+      context: '',
+    }));
+  };
 
   const handleSave = async () => {
-    setIsSaving(true);
-    
-    const dataToSave = selectedTab === 'impellers' ? impellerData : bushingData;
-    console.log('Saving equivalence:', dataToSave);
-    
-    // Simulate API call
-    setTimeout(() => {
-      setIsSaving(false);
+    const trimmedReference = formState.referenceCode.trim();
+    const trimmedCefCode = formState.cefCode.trim();
+
+    if (!trimmedReference) {
+      toast({
+        title: 'Campo obbligatorio',
+        description: 'Inserisci il codice da mappare (OEM/Supersession/Application)',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (!formState.propellerId && !trimmedCefCode) {
+      toast({
+        title: 'Codice CEF mancante',
+        description: 'Seleziona una girante CEF o inserisci manualmente il codice da collegare.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    try {
+      const created = await createCrossReference({
+        propellerId: formState.propellerId || undefined,
+        cefCode: trimmedCefCode || undefined,
+        referenceCode: trimmedReference,
+        type: formState.type,
+        context: formState.context.trim() || undefined,
+        notes: formState.notes.trim() || undefined,
+      });
+
+      toast({
+        title: 'Equivalenza creata',
+        description: `${created.referenceCode} aggiunto a ${created.cefCode}`,
+      });
+
       navigate('/equivalences');
-    }, 1000);
+    } catch (err) {
+      console.error('Error saving cross reference:', err);
+      toast({
+        title: 'Errore',
+        description: err instanceof Error ? err.message : 'Impossibile salvare l\'equivalenza',
+        variant: 'destructive',
+      });
+    }
   };
+
+  const contextCopy = useMemo(() => {
+    switch (formState.type) {
+      case 'oem':
+        return {
+          label: 'OEM / Costruttore',
+          placeholder: 'Es. Yamaha',
+          description: 'Inserisci il brand o il costruttore OEM correlato.',
+        };
+      case 'supersession':
+        return {
+          label: 'Dettagli supersession',
+          placeholder: 'Es. sostituisce P1234 dal 2023',
+          description: 'Spiega in che modo il codice sostituisce o viene sostituito.',
+        };
+      case 'application':
+        return {
+          label: 'Applicazione (motore/modello)',
+          placeholder: 'Es. Mercury 150 EFI',
+          description: 'Specificare motore, modello o imbarcazione compatibile.',
+        };
+      default:
+        return {
+          label: 'Contesto',
+          placeholder: 'Dettagli opzionali',
+          description: 'Informazioni aggiuntive utili per comprendere il mapping.',
+        };
+    }
+  }, [formState.type]);
+
+  const isFormValid = useMemo(() => {
+    return (
+      formState.referenceCode.trim().length > 0 &&
+      (!!formState.propellerId || formState.cefCode.trim().length > 0)
+    );
+  }, [formState.propellerId, formState.referenceCode, formState.cefCode]);
 
   return (
     <AppLayout>
       <div className="space-y-6">
-        {/* Header */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <Button 
-              variant="outline" 
+            <Button
+              variant="outline"
               size="sm"
               onClick={() => navigate('/equivalences')}
             >
@@ -72,232 +215,146 @@ export default function EquivalenceNew() {
             </Button>
             <div>
               <h1 className="text-heading">Nuova Equivalenza</h1>
-              <p className="text-body">Crea una nuova equivalenza tra prodotti</p>
+              <p className="text-body">Collega un codice OEM, supersession o applicazione ad un codice CEF</p>
             </div>
           </div>
           <div className="flex gap-2">
-            <Button 
+            <Button
               variant="outline"
               onClick={() => navigate('/equivalences')}
             >
               Annulla
             </Button>
-            <Button 
+            <Button
               onClick={handleSave}
-              disabled={isSaving}
+              disabled={isMutating || !isFormValid}
               className="btn-primary"
             >
               <Save className="h-4 w-4 mr-2" />
-              {isSaving ? 'Salvataggio...' : 'Salva'}
+              {isMutating ? 'Salvataggio...' : 'Salva'}
             </Button>
           </div>
         </div>
 
-        {/* Form */}
         <Card className="card-elevated">
           <CardHeader>
-            <CardTitle className="text-lg">Informazioni Equivalenza</CardTitle>
+            <CardTitle className="text-lg">Dettagli equivalenza</CardTitle>
           </CardHeader>
-          <CardContent>
-            <Tabs value={selectedTab} onValueChange={setSelectedTab}>
-              <TabsList className="grid w-full grid-cols-2">
-                <TabsTrigger value="impellers" className="flex items-center gap-2">
-                  <Ship className="h-4 w-4" />
-                  Giranti
-                </TabsTrigger>
-                <TabsTrigger value="bushings" className="flex items-center gap-2">
-                  <Circle className="h-4 w-4" />
-                  Bussole
-                </TabsTrigger>
-              </TabsList>
+          <CardContent className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="space-y-2">
+                <Label>Girante CEF</Label>
+                <Select
+                  value={formState.propellerId}
+                  onValueChange={handlePropellerChange}
+                  disabled={propellersLoading}
+                >
+                  <SelectTrigger className="input-business">
+                    <SelectValue placeholder="Seleziona una girante" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">Nessuna selezione</SelectItem>
+                    {propellers.map(propeller => (
+                      <SelectItem key={propeller.id} value={propeller.id}>
+                        <span className="font-mono">{propeller.model}</span>
+                        {propeller.description ? ` — ${propeller.description}` : ''}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  Elenco limitato alle prime 200 giranti ordinate per codice.
+                </p>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="gap-2 text-muted-foreground"
+                  onClick={loadPropellers}
+                  disabled={propellersLoading}
+                >
+                  <RefreshCw className={`h-4 w-4 ${propellersLoading ? 'animate-spin' : ''}`} />
+                  Aggiorna elenco
+                </Button>
+              </div>
 
-              <TabsContent value="impellers" className="space-y-6 mt-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="space-y-2">
-                    <Label htmlFor="source_product_id">Prodotto Sorgente *</Label>
-                    <Input
-                      id="source_product_id"
-                      value={impellerData.source_product_id}
-                      onChange={(e) => setImpellerData(prev => ({ ...prev, source_product_id: e.target.value }))}
-                      placeholder="G-2847"
-                      className="input-business"
-                    />
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <Label htmlFor="target_product_id">Prodotto Target *</Label>
-                    <Input
-                      id="target_product_id"
-                      value={impellerData.target_product_id}
-                      onChange={(e) => setImpellerData(prev => ({ ...prev, target_product_id: e.target.value }))}
-                      placeholder="G-2901"
-                      className="input-business"
-                    />
-                  </div>
-                </div>
+              <div className="space-y-2">
+                <Label htmlFor="cefCode">Codice CEF</Label>
+                <Input
+                  id="cefCode"
+                  value={formState.cefCode}
+                  onChange={event => handleCefCodeChange(event.target.value)}
+                  placeholder="Es. CEF-1234"
+                  className="input-business"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Se il codice corrisponde a una girante esistente, verrà selezionata automaticamente.
+                </p>
+              </div>
+            </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="space-y-2">
-                    <Label htmlFor="match_type">Tipo Equivalenza *</Label>
-                    <Select 
-                      value={impellerData.match_type} 
-                      onValueChange={(value: MatchType) => setImpellerData(prev => ({ ...prev, match_type: value }))}
-                    >
-                      <SelectTrigger className="input-business">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="full">Completa</SelectItem>
-                        <SelectItem value="dimensional">Dimensionale</SelectItem>
-                        <SelectItem value="form-fit">Forma/Funzione</SelectItem>
-                        <SelectItem value="partial">Parziale</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <Label htmlFor="dimension_tolerance_mm">Tolleranza Dimensionale (mm)</Label>
-                    <Input
-                      id="dimension_tolerance_mm"
-                      type="number"
-                      step="0.1"
-                      value={impellerData.dimension_tolerance_mm || ''}
-                      onChange={(e) => setImpellerData(prev => ({ ...prev, dimension_tolerance_mm: parseFloat(e.target.value) || 0 }))}
-                      className="input-business"
-                    />
-                  </div>
-                </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="space-y-2">
+                <Label htmlFor="referenceCode">Codice da collegare *</Label>
+                <Input
+                  id="referenceCode"
+                  value={formState.referenceCode}
+                  onChange={event => setFormState(prev => ({ ...prev, referenceCode: event.target.value }))}
+                  placeholder="OEM / supersession / applicazione"
+                  className="input-business"
+                  autoFocus
+                />
+              </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="space-y-2">
-                    <Label htmlFor="material_note">Note Materiale</Label>
-                    <Textarea
-                      id="material_note"
-                      value={impellerData.material_note}
-                      onChange={(e) => setImpellerData(prev => ({ ...prev, material_note: e.target.value }))}
-                      className="input-business"
-                    />
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <Label htmlFor="bushing_note">Note Bussola</Label>
-                    <Textarea
-                      id="bushing_note"
-                      value={impellerData.bushing_note}
-                      onChange={(e) => setImpellerData(prev => ({ ...prev, bushing_note: e.target.value }))}
-                      className="input-business"
-                    />
-                  </div>
-                </div>
+              <div className="space-y-2">
+                <Label>Tipo mapping *</Label>
+                <Select
+                  value={formState.type}
+                  onValueChange={value => handleTypeChange(value as CrossReferenceKind)}
+                >
+                  <SelectTrigger className="input-business">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="oem">OEM cross reference</SelectItem>
+                    <SelectItem value="supersession">Supersession</SelectItem>
+                    <SelectItem value="application">Application guide</SelectItem>
+                    <SelectItem value="other">Altro</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="space-y-2">
-                    <Label htmlFor="shaft_profile_note">Note Profilo Albero</Label>
-                    <Textarea
-                      id="shaft_profile_note"
-                      value={impellerData.shaft_profile_note}
-                      onChange={(e) => setImpellerData(prev => ({ ...prev, shaft_profile_note: e.target.value }))}
-                      className="input-business"
-                    />
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <Label htmlFor="general_note">Note Generali</Label>
-                    <Textarea
-                      id="general_note"
-                      value={impellerData.general_note}
-                      onChange={(e) => setImpellerData(prev => ({ ...prev, general_note: e.target.value }))}
-                      className="input-business"
-                    />
-                  </div>
-                </div>
-              </TabsContent>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="space-y-2">
+                <Label htmlFor="context">{contextCopy.label}</Label>
+                <Input
+                  id="context"
+                  value={formState.context}
+                  onChange={event => setFormState(prev => ({ ...prev, context: event.target.value }))}
+                  placeholder={contextCopy.placeholder}
+                  className="input-business"
+                />
+                <p className="text-xs text-muted-foreground">{contextCopy.description}</p>
+              </div>
 
-              <TabsContent value="bushings" className="space-y-6 mt-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="space-y-2">
-                    <Label htmlFor="source_bushing_code">Codice Bussola Sorgente *</Label>
-                    <Input
-                      id="source_bushing_code"
-                      value={bushingData.source_bushing_code}
-                      onChange={(e) => setBushingData(prev => ({ ...prev, source_bushing_code: e.target.value }))}
-                      placeholder="BO-012"
-                      className="input-business"
-                    />
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <Label htmlFor="target_bushing_code">Codice Bussola Target *</Label>
-                    <Input
-                      id="target_bushing_code"
-                      value={bushingData.target_bushing_code}
-                      onChange={(e) => setBushingData(prev => ({ ...prev, target_bushing_code: e.target.value }))}
-                      placeholder="BP-012"
-                      className="input-business"
-                    />
-                  </div>
-                </div>
+              <div className="space-y-2">
+                <Label htmlFor="notes">Note interne</Label>
+                <Textarea
+                  id="notes"
+                  value={formState.notes}
+                  onChange={event => setFormState(prev => ({ ...prev, notes: event.target.value }))}
+                  className="input-business"
+                  placeholder="Annotazioni utili per il team commerciale"
+                />
+              </div>
+            </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="space-y-2">
-                    <Label htmlFor="match_type_bushing">Tipo Equivalenza *</Label>
-                    <Select 
-                      value={bushingData.match_type} 
-                      onValueChange={(value: MatchType) => setBushingData(prev => ({ ...prev, match_type: value }))}
-                    >
-                      <SelectTrigger className="input-business">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="full">Completa</SelectItem>
-                        <SelectItem value="dimensional">Dimensionale</SelectItem>
-                        <SelectItem value="form-fit">Forma/Funzione</SelectItem>
-                        <SelectItem value="partial">Parziale</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <Label htmlFor="shaft_profile_compatible">Compatibilità Profilo</Label>
-                    <Select 
-                      value={bushingData.shaft_profile_compatible} 
-                      onValueChange={(value: 'yes' | 'no' | 'unknown') => setBushingData(prev => ({ ...prev, shaft_profile_compatible: value }))}
-                    >
-                      <SelectTrigger className="input-business">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="yes">Compatibile</SelectItem>
-                        <SelectItem value="no">Non Compatibile</SelectItem>
-                        <SelectItem value="unknown">Sconosciuto</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="space-y-2">
-                    <Label htmlFor="material_note_bushing">Note Materiale</Label>
-                    <Textarea
-                      id="material_note_bushing"
-                      value={bushingData.material_note}
-                      onChange={(e) => setBushingData(prev => ({ ...prev, material_note: e.target.value }))}
-                      className="input-business"
-                    />
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <Label htmlFor="general_note_bushing">Note Generali</Label>
-                    <Textarea
-                      id="general_note_bushing"
-                      value={bushingData.general_note}
-                      onChange={(e) => setBushingData(prev => ({ ...prev, general_note: e.target.value }))}
-                      className="input-business"
-                    />
-                  </div>
-                </div>
-              </TabsContent>
-            </Tabs>
+            {propellersError && (
+              <Alert variant="destructive">
+                <AlertDescription>{propellersError}</AlertDescription>
+              </Alert>
+            )}
           </CardContent>
         </Card>
       </div>

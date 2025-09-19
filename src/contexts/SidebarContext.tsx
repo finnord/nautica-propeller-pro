@@ -20,16 +20,26 @@ interface SidebarProviderProps {
   children: ReactNode;
 }
 
+const isBrowser = typeof window !== 'undefined';
+
 export const SidebarProvider = ({ children }: SidebarProviderProps) => {
   // Initialize from localStorage, default to false (expanded)
   const [collapsed, setCollapsedState] = useState(() => {
-    const saved = localStorage.getItem('sidebar-collapsed');
+    if (!isBrowser) {
+      return false;
+    }
+
+    const saved = window.localStorage.getItem('sidebar-collapsed');
     return saved ? JSON.parse(saved) : false;
   });
 
   // Persist to localStorage when state changes
   useEffect(() => {
-    localStorage.setItem('sidebar-collapsed', JSON.stringify(collapsed));
+    if (!isBrowser) {
+      return;
+    }
+
+    window.localStorage.setItem('sidebar-collapsed', JSON.stringify(collapsed));
   }, [collapsed]);
 
   const setCollapsed = (value: boolean) => {

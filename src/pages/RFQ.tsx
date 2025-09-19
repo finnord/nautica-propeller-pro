@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { useKeyboardShortcutsContext } from '@/contexts/KeyboardShortcutsContext';
 import { Button } from '@/components/ui/button';
@@ -10,9 +11,10 @@ import { StatusFilterButtons } from '@/components/ui/status-filter-buttons';
 import { PageHeader } from '@/components/ui/page-header';
 import { EmptyStateCard } from '@/components/ui/empty-state-card';
 import { RFQTableView } from '@/components/ui/rfq-table-view';
-import { 
-  Plus, 
-  FileText, 
+import { ActionButtonGroup } from '@/components/ui/action-button-group';
+import {
+  Plus,
+  FileText,
   Eye,
   Edit,
   Clock,
@@ -105,20 +107,28 @@ const getStatusIcon = (status: RFQStatus) => {
 };
 
 export default function RFQ() {
+  const navigate = useNavigate();
   const { registerShortcut, unregisterShortcut } = useKeyboardShortcutsContext();
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedStatus, setSelectedStatus] = useState<RFQStatus | 'all'>('all');
   const [viewMode, setViewMode] = useState<'cards' | 'table'>('cards');
 
-  const filteredRFQs = mockRFQs.filter(rfq => {
-    const matchesSearch = rfq.rfq_id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         rfq.customer_id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         (rfq.notes?.toLowerCase().includes(searchTerm.toLowerCase()) ?? false);
-    
-    const matchesStatus = selectedStatus === 'all' || rfq.status === selectedStatus;
-    
-    return matchesSearch && matchesStatus;
-  });
+  const filteredRFQs = useMemo(() => {
+    return mockRFQs.filter(rfq => {
+      const normalizedQuery = searchTerm.toLowerCase();
+      const matchesSearch =
+        rfq.rfq_id.toLowerCase().includes(normalizedQuery) ||
+        rfq.customer_id.toLowerCase().includes(normalizedQuery) ||
+        (rfq.notes?.toLowerCase().includes(normalizedQuery) ?? false);
+
+      const matchesStatus =
+        selectedStatus === 'all' ||
+        rfq.status === selectedStatus;
+
+      return matchesSearch && matchesStatus;
+    });
+  }, [searchTerm, selectedStatus]);
 
   const statusOptions = [
     { value: 'all', label: 'Tutti' },
@@ -130,11 +140,11 @@ export default function RFQ() {
   ];
 
   const handleViewDetails = (rfqId: string) => {
-    window.location.href = `/rfq/${rfqId}`;
+    navigate(`/rfq/${rfqId}`);
   };
 
   const handleEdit = (rfqId: string) => {
-    window.location.href = `/rfq/${rfqId}/edit`;
+    navigate(`/rfq/${rfqId}/edit`);
   };
 
   const handleQuote = (rfqId: string) => {
@@ -148,7 +158,7 @@ export default function RFQ() {
       {
         key: 'tab',
         description: 'Cambia visualizzazione (cards/table)',
-        action: () => setViewMode(prev => prev === 'cards' ? 'table' : 'cards'),
+        action: () => setViewMode(prev => (prev === 'cards' ? 'table' : 'cards')),
         category: 'view' as const
       },
       {
@@ -156,8 +166,7 @@ export default function RFQ() {
         ctrlKey: true,
         description: 'Focus ricerca',
         action: () => {
-          const searchInput = document.querySelector('input[placeholder*="ricerca"]') as HTMLInputElement;
-          searchInput?.focus();
+          searchInputRef.current?.focus();
         },
         category: 'search' as const
       },
@@ -165,7 +174,7 @@ export default function RFQ() {
         key: 'n',
         ctrlKey: true,
         description: 'Nuova RFQ',
-        action: () => window.location.href = '/rfq/new',
+        action: () => navigate('/rfq/new'),
         category: 'actions' as const
       },
       {
@@ -184,7 +193,7 @@ export default function RFQ() {
     return () => {
       shortcuts.forEach(shortcut => unregisterShortcut(shortcut.key));
     };
-  }, [registerShortcut, unregisterShortcut]);
+  }, [navigate, registerShortcut, unregisterShortcut]);
 
   return (
     <AppLayout>
@@ -196,9 +205,9 @@ export default function RFQ() {
           actions={
             <>
               <ViewModeToggle viewMode={viewMode} onViewModeChange={setViewMode} />
-              <Button 
+              <Button
                 className="btn-primary"
-                onClick={() => window.location.href = '/rfq/new'}
+                onClick={() => navigate('/rfq/new')}
               >
                 <Plus className="h-4 w-4 mr-2" />
                 Nuova RFQ
@@ -209,6 +218,7 @@ export default function RFQ() {
 
         {/* Filters */}
         <SearchFilterCard
+          ref={searchInputRef}
           searchTerm={searchTerm}
           onSearchChange={setSearchTerm}
           placeholder="Cerca per numero RFQ, cliente o note..."
@@ -221,80 +231,67 @@ export default function RFQ() {
         </SearchFilterCard>
 
         {/* RFQ Display */}
-        {viewMode === 'cards' ? (
-          <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+        {filteredRFQs.length === 0 ? (
+          <EmptyStateCard
+            title="Nessuna RFQ trovata"
+            description="Prova a modificare i filtri o crea una nuova richiesta di quotazione"
+            actions={[{
+              icon: Plus,
+              label: 'Nuova RFQ',
+              onClick: () => navigate('/rfq/new'),
+              variant: 'default'
+            }]}
+          />
+        ) : viewMode === 'cards' ? (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {filteredRFQs.map((rfq) => {
               const StatusIcon = getStatusIcon(rfq.status);
               return (
                 <Card key={rfq.rfq_id} className="card-interactive">
-                  <CardHeader>
-                    <div className="flex items-start justify-between">
+                  <CardContent className="p-6">
+                    <div className="flex items-start justify-between mb-4">
                       <div className="space-y-1">
-                        <CardTitle className="text-lg">{rfq.rfq_id}</CardTitle>
-                        <div className="flex items-center gap-2">
-                          <Badge className={getStatusColor(rfq.status)}>
-                            <StatusIcon className="h-3 w-3 mr-1" />
-                            {getStatusLabel(rfq.status)}
-                          </Badge>
-                          <span className="text-sm text-muted-foreground">
-                            {rfq.customer_id}
-                          </span>
-                        </div>
+                        <h3 className="text-lg font-semibold">{rfq.rfq_id}</h3>
+                        <p className="text-sm text-muted-foreground">Cliente: {rfq.customer_id}</p>
+                        <p className="text-xs text-muted-foreground">Data: {rfq.rfq_date}</p>
                       </div>
-                      <FileText className="h-5 w-5 text-muted-foreground" />
-                    </div>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="grid grid-cols-2 gap-4 text-sm">
-                      <div>
-                        <p className="text-muted-foreground">Data RFQ</p>
-                        <p className="font-semibold">
-                          {new Date(rfq.rfq_date).toLocaleDateString('it-IT')}
-                        </p>
-                      </div>
-                      <div>
-                        <p className="text-muted-foreground">Ultimo Aggiornamento</p>
-                        <p className="font-semibold">
-                          {new Date(rfq.updated_at).toLocaleDateString('it-IT')}
-                        </p>
-                      </div>
+                      <Badge className={`${getStatusColor(rfq.status)} flex items-center gap-2`}>
+                        <StatusIcon className="h-3 w-3" />
+                        {getStatusLabel(rfq.status)}
+                      </Badge>
                     </div>
 
                     {rfq.notes && (
-                      <div className="text-sm">
-                        <p className="text-muted-foreground">Note</p>
-                        <p className="text-xs leading-relaxed">{rfq.notes}</p>
-                      </div>
+                      <p className="text-sm text-muted-foreground mb-4 leading-relaxed">
+                        {rfq.notes}
+                      </p>
                     )}
 
                     <div className="flex justify-between items-center pt-4 border-t border-border">
-                      <div className="flex gap-2">
-                        <Button 
-                          size="sm" 
-                          variant="outline"
-                          onClick={() => handleViewDetails(rfq.rfq_id)}
-                        >
-                          <Eye className="h-3 w-3 mr-1" />
-                          Dettagli
-                        </Button>
-                        <Button 
-                          size="sm" 
-                          variant="outline"
-                          onClick={() => handleEdit(rfq.rfq_id)}
-                        >
-                          <Edit className="h-3 w-3 mr-1" />
-                          Modifica
-                        </Button>
-                      </div>
-                      {rfq.status === 'open' && (
-                        <Button 
-                          size="sm" 
-                          className="btn-primary"
-                          onClick={() => handleQuote(rfq.rfq_id)}
-                        >
-                          Quota
-                        </Button>
-                      )}
+                      <ActionButtonGroup
+                        actions={[
+                          {
+                            icon: Eye,
+                            label: 'Dettagli',
+                            onClick: () => handleViewDetails(rfq.rfq_id),
+                            variant: 'outline'
+                          },
+                          {
+                            icon: Edit,
+                            label: 'Modifica',
+                            onClick: () => handleEdit(rfq.rfq_id),
+                            variant: 'outline'
+                          }
+                        ]}
+                      />
+                      <ActionButtonGroup
+                        actions={[{
+                          icon: FileText,
+                          label: 'Genera offerta',
+                          onClick: () => handleQuote(rfq.rfq_id),
+                          variant: 'ghost'
+                        }]}
+                      />
                     </div>
                   </CardContent>
                 </Card>
@@ -302,25 +299,19 @@ export default function RFQ() {
             })}
           </div>
         ) : (
-          <RFQTableView 
-            rfqs={filteredRFQs}
-            onViewDetails={handleViewDetails}
-            onEdit={handleEdit}
-            onQuote={handleQuote}
-          />
-        )}
-
-        {filteredRFQs.length === 0 && (
-          <EmptyStateCard
-            icon={FileText}
-            title="Nessuna RFQ trovata"
-            description="Prova a modificare i filtri di ricerca o crea una nuova RFQ."
-            actionButton={{
-              label: "Nuova RFQ",
-              onClick: () => window.location.href = '/rfq/new',
-              icon: Plus
-            }}
-          />
+          <Card className="card-elevated">
+            <CardHeader>
+              <CardTitle>Richieste di Quotazione</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <RFQTableView
+                data={filteredRFQs}
+                onViewDetails={handleViewDetails}
+                onEdit={handleEdit}
+                onQuote={handleQuote}
+              />
+            </CardContent>
+          </Card>
         )}
       </div>
     </AppLayout>

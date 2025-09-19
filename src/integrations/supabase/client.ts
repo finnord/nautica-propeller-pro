@@ -2,16 +2,28 @@
 import { createClient } from '@supabase/supabase-js';
 import type { Database } from './types';
 
-const SUPABASE_URL = "https://ucvlbtntemxmcovfmnka.supabase.co";
-const SUPABASE_PUBLISHABLE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVjdmxidG50ZW14bWNvdmZtbmthIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTc2Nzk5MTAsImV4cCI6MjA3MzI1NTkxMH0.lfvBdLeKfQyZGmELQCFwrDrxEOWW7Q16CrgM3bNjY9g";
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL ?? "https://ucvlbtntemxmcovfmnka.supabase.co";
+const SUPABASE_PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY ??
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVjdmxidG50ZW14bWNvdmZtbmthIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTc2Nzk5MTAsImV4cCI6MjA3MzI1NTkxMH0.lfvBdLeKfQyZGmELQCFwrDrxEOWW7Q16CrgM3bNjY9g";
 
 // Import the supabase client like this:
 // import { supabase } from "@/integrations/supabase/client";
 
+const isBrowser = typeof window !== 'undefined';
+
+const authOptions = isBrowser
+  ? {
+      storage: window.localStorage,
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: true,
+    }
+  : {
+      persistSession: false,
+      autoRefreshToken: false,
+      detectSessionInUrl: false,
+    };
+
 export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
-  auth: {
-    storage: localStorage,
-    persistSession: true,
-    autoRefreshToken: true,
-  }
+  auth: authOptions,
 });
