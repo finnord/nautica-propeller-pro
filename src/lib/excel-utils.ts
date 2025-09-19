@@ -413,28 +413,49 @@ export const priceListTemplate: TemplateSheet = {
   description: 'Template per importazione listini prezzi',
   headers: [
     'product_code',
-    'customer_name', 
+    'product_name',
+    'customer_name',
+    'customer_code',
     'list_name',
-    'list_version',
-    'list_identifier',
-    'unit_price'
+    'unit_price',
+    'currency',
+    'valid_from',
+    'valid_to',
+    'margin_percent',
+    'margin_euro',
+    'min_quantity',
+    'notes'
   ],
   data: [
     {
       product_code: 'SP-3142',
+      product_name: 'Elica Standard 3142',
       customer_name: 'Marina SpA',
-      list_name: 'Listino 2024',
-      list_version: 'v1.0', 
-      list_identifier: '2024-001',
-      unit_price: 85.50
+      customer_code: 'MAR001',
+      list_name: 'Listino Marina 2024',
+      unit_price: 85.50,
+      currency: 'EUR',
+      valid_from: '2024-01-01',
+      valid_to: '2024-12-31',
+      margin_percent: 45,
+      margin_euro: '',
+      min_quantity: 1,
+      notes: 'Prodotto standard per marina'
     },
     {
       product_code: 'SP-2847',
-      customer_name: 'Marina SpA',
-      list_name: 'Listino 2024', 
-      list_version: 'v1.0',
-      list_identifier: '2024-001',
-      unit_price: 72.30
+      product_name: 'Elica Performance 2847',
+      customer_name: 'Marina SpA', 
+      customer_code: 'MAR001',
+      list_name: 'Listino Marina 2024',
+      unit_price: 72.30,
+      currency: 'EUR',
+      valid_from: '2024-01-01',
+      valid_to: '2024-12-31',
+      margin_percent: '',
+      margin_euro: 25.50,
+      min_quantity: 5,
+      notes: 'Sconto per quantità minima 5 pz'
     }
   ]
 };
@@ -448,21 +469,39 @@ export const downloadPriceListTemplate = () => {
       ['TEMPLATE IMPORTAZIONE LISTINI PREZZI'],
       [''],
       ['ISTRUZIONI:'],
-      ['1. Compilare tutte le colonne obbligatorie'],
-      ['2. I codici prodotto devono esistere nel database'],
-      ['3. I prezzi verranno confrontati con i costi base per calcolare i margini'],
-      ['4. Se il cliente non esiste verrà creato automaticamente'],
+      ['1. Compilare almeno le colonne CRITICHE (obbligatorie)'],
+      ['2. Sistema UPSERT: crea nuovi record o aggiorna esistenti'],
+      ['3. Gestione automatica dei conflitti con opzioni di risoluzione'],
+      ['4. Log dettagliato e backup automatico prima dell\'import'],
       [''],
-      ['COLONNE:'],
-      ['• product_code: Codice prodotto (obbligatorio)'],
-      ['• customer_name: Nome cliente (obbligatorio)'],
-      ['• list_name: Nome del listino (obbligatorio)'],
-      ['• list_version: Versione listino (es. v1.0)'],
-      ['• list_identifier: Identificativo univoco (es. 2024-001)'],
-      ['• unit_price: Prezzo unitario in EUR (obbligatorio)'],
+      ['COLONNE CRITICHE (obbligatorie):'],
+      ['• product_code: Codice prodotto esistente nel database'],
+      ['• unit_price: Prezzo unitario positivo'],
       [''],
-      ['NOTA: Il margine verrà calcolato automaticamente confrontando'],
-      ['il prezzo unitario con il costo base del prodotto nel database.']
+      ['COLONNE IMPORTANTI (consigliate):'],
+      ['• customer_name: Nome cliente (se mancante usa "Cliente Generico")'],
+      ['• list_name: Nome listino (se mancante usa "Listino Standard")'],
+      ['• currency: Valuta (default: EUR)'],
+      ['• valid_from: Data inizio validità (default: oggi)'],
+      [''],
+      ['COLONNE OPZIONALI:'],
+      ['• product_name: Nome descrittivo del prodotto'],
+      ['• customer_code: Codice cliente per identificazione'],
+      ['• valid_to: Data fine validità'],
+      ['• margin_percent: Margine percentuale (alternativo a margin_euro)'],
+      ['• margin_euro: Margine fisso in EUR (alternativo a margin_percent)'],
+      ['• min_quantity: Quantità minima ordinabile (default: 1)'],
+      ['• notes: Note aggiuntive'],
+      [''],
+      ['STRATEGIE IMPORT:'],
+      ['• APPEND: Aggiungi solo nuovi record'],
+      ['• UPDATE: Aggiorna solo record esistenti'],
+      ['• UPSERT: Crea nuovi o aggiorna esistenti (consigliato)'],
+      [''],
+      ['FORMATI:'],
+      ['• Date: YYYY-MM-DD (es. 2024-01-15)'],
+      ['• Numeri: Usa punto decimale (es. 85.50)'],
+      ['• Margini: Solo uno tra margin_percent e margin_euro'],
     ]);
     XLSX.utils.book_append_sheet(wb, infoSheet, 'ISTRUZIONI');
     
@@ -473,11 +512,18 @@ export const downloadPriceListTemplate = () => {
     // Set column widths
     ws['!cols'] = [
       { wch: 15 }, // product_code
+      { wch: 25 }, // product_name
       { wch: 25 }, // customer_name
+      { wch: 15 }, // customer_code
       { wch: 20 }, // list_name
-      { wch: 12 }, // list_version
-      { wch: 15 }, // list_identifier  
-      { wch: 12 }  // unit_price
+      { wch: 12 }, // unit_price
+      { wch: 8 },  // currency
+      { wch: 12 }, // valid_from
+      { wch: 12 }, // valid_to
+      { wch: 12 }, // margin_percent
+      { wch: 12 }, // margin_euro
+      { wch: 10 }, // min_quantity
+      { wch: 30 }  // notes
     ];
     
     XLSX.utils.book_append_sheet(wb, ws, priceListTemplate.name);
