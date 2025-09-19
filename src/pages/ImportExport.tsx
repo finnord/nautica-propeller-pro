@@ -5,6 +5,11 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Progress } from '@/components/ui/progress';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { Label } from '@/components/ui/label';
+import { Separator } from '@/components/ui/separator';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useToast } from '@/hooks/use-toast';
 import { 
   Upload, 
@@ -19,51 +24,50 @@ import {
   RefreshCw,
   Plus,
   Edit,
-  SkipForward
+  SkipForward,
+  Settings,
+  Archive,
+  TrendingUp,
+  AlertTriangle,
+  Info
 } from 'lucide-react';
-import { downloadTemplate, downloadExportData } from '@/lib/excel-utils';
-import { ConflictResolutionDialog, type Conflict, type ConflictResolution } from '@/components/dialogs/ConflictResolutionDialog';
-import { useImportValidation, type UpsertValidationResult, type ValidationLevel } from '@/hooks/useImportValidation';
-import { useImportUpsert, type UpsertResult } from '@/hooks/useImportUpsert';
+import { downloadTemplate, downloadExportData, downloadPriceListTemplate } from '@/lib/excel-utils';
+import { PriceListConflictDialog } from '@/components/dialogs/PriceListConflictDialog';
+import { usePriceListImportValidation, type PriceListValidationResult, type PriceListImportRow, type ValidationLevel } from '@/hooks/usePriceListImportValidation';
+import { usePriceListImportUpsert, type PriceListUpsertResult, type PriceListConflictResolution, type ImportMode } from '@/hooks/usePriceListImportUpsert';
 import { supabase } from '@/integrations/supabase/client';
 import * as XLSX from 'xlsx';
 
-type ImportStatus = 'idle' | 'uploading' | 'validating' | 'importing' | 'completed' | 'error';
-type ImportMode = 'preview' | 'conflicts' | 'importing';
-
-interface ImportData {
-  sheet: string;
-  data: any[];
-  headers: string[];
-}
+type ImportStatus = 'idle' | 'uploading' | 'validating' | 'preview' | 'conflicts' | 'importing' | 'completed' | 'error';
+type ImportStep = 'upload' | 'validate' | 'preview' | 'conflicts' | 'import' | 'complete';
 
 export default function ImportExport() {
   const [importStatus, setImportStatus] = useState<ImportStatus>('idle');
   const [importProgress, setImportProgress] = useState(0);
-  const [importMode, setImportMode] = useState<ImportMode>('preview');
-  const [validationResults, setValidationResults] = useState<UpsertValidationResult[]>([]);
-  const [importData, setImportData] = useState<ImportData[]>([]);
+  const [importStep, setImportStep] = useState<ImportStep>('upload');
+  const [importMode, setImportMode] = useState<ImportMode>('upsert');
+  const [validationResult, setValidationResult] = useState<PriceListValidationResult | null>(null);
+  const [importData, setImportData] = useState<PriceListImportRow[]>([]);
   const [file, setFile] = useState<File | null>(null);
-  const [allConflicts, setAllConflicts] = useState<Conflict[]>([]);
-  const [conflictResolutions, setConflictResolutions] = useState<Record<string, ConflictResolution>>({});
+  const [conflictResolutions, setConflictResolutions] = useState<Record<string, PriceListConflictResolution>>({});
   const [showConflictDialog, setShowConflictDialog] = useState(false);
-  const [importResults, setImportResults] = useState<UpsertResult[]>([]);
+  const [importResult, setImportResult] = useState<PriceListUpsertResult | null>(null);
   
   const { toast } = useToast();
-  const { validateImpellerUpsert, validateRubberCompoundUpsert, validateBushingUpsert } = useImportValidation();
-  const { upsertImpellers, upsertRubberCompounds, upsertBushings } = useImportUpsert();
+  const { isValidating, validatePriceListImport } = usePriceListImportValidation();
+  const { isImporting, upsertPriceListData, downloadImportLog } = usePriceListImportUpsert();
 
   // Reset function
   const resetImport = () => {
     setImportStatus('idle');
     setImportProgress(0);
-    setImportMode('preview');
-    setValidationResults([]);
+    setImportStep('upload');
+    setValidationResult(null);
     setImportData([]);
     setFile(null);
-    setAllConflicts([]);
     setConflictResolutions({});
-    setImportResults([]);
+    setImportResult(null);
+    setShowConflictDialog(false);
   };
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -73,142 +77,118 @@ export default function ImportExport() {
     resetImport();
     setFile(selectedFile);
     setImportStatus('uploading');
+    setImportStep('validate');
 
     try {
       const arrayBuffer = await selectedFile.arrayBuffer();
       const workbook = XLSX.read(arrayBuffer, { type: 'array' });
       
       setImportStatus('validating');
+      setImportProgress(30);
       
-      const parsedData: ImportData[] = [];
-      const validationPromises: Promise<UpsertValidationResult>[] = [];
+      // Get the first sheet (price list data)
+      const sheetName = workbook.SheetNames[0];
+      const worksheet = workbook.Sheets[sheetName];
+      const jsonData = XLSX.utils.sheet_to_json(worksheet) as PriceListImportRow[];
       
-      let totalSheets = 0;
-      for (const sheetName of workbook.SheetNames) {
-        const worksheet = workbook.Sheets[sheetName];
-        const jsonData = XLSX.utils.sheet_to_json(worksheet);
-        
-        if (jsonData.length > 0) {
-          parsedData.push({
-            sheet: sheetName,
-            data: jsonData,
-            headers: Object.keys(jsonData[0] as any)
-          });
-          totalSheets++;
-          
-          // Add smart validation based on sheet content
-          if (sheetName.toLowerCase().includes('impeller') || sheetName === 'Products') {
-            validationPromises.push(validateImpellerUpsert(jsonData));
-          } else if (sheetName.toLowerCase().includes('rubber') || sheetName.toLowerCase().includes('compound')) {
-            validationPromises.push(validateRubberCompoundUpsert(jsonData));
-          } else if (sheetName.toLowerCase().includes('bushing')) {
-            validationPromises.push(validateBushingUpsert(jsonData));
-          }
-        }
-        
-        setImportProgress((parsedData.length / workbook.SheetNames.length) * 70);
+      if (jsonData.length === 0) {
+        throw new Error('Il file Excel è vuoto o non contiene dati validi');
       }
+
+      setImportData(jsonData);
+      setImportProgress(60);
       
-      // Wait for all validations
-      const results = await Promise.all(validationPromises);
-      
-      // Collect all conflicts
-      const conflicts: Conflict[] = [];
-      results.forEach(result => conflicts.push(...result.conflicts));
-      
-      setImportData(parsedData);
-      setValidationResults(results);
-      setAllConflicts(conflicts);
-      setImportStatus('completed');
+      // Validate the data
+      const result = await validatePriceListImport(jsonData);
+      setValidationResult(result);
       setImportProgress(100);
       
-      // Show conflicts if any
-      if (conflicts.length > 0) {
-        setImportMode('conflicts');
+      // Determine next step based on validation
+      if (!result.canProceed) {
+        setImportStatus('error');
+        setImportStep('upload');
+        toast({
+          title: 'Errori Critici',
+          description: 'Il file contiene errori critici che bloccano l\'import. Correggi i dati e riprova.',
+          variant: 'destructive'
+        });
+      } else if (result.conflicts.length > 0) {
+        setImportStatus('conflicts');
+        setImportStep('conflicts');
+        setShowConflictDialog(true);
+      } else {
+        setImportStatus('preview');
+        setImportStep('preview');
       }
       
     } catch (error) {
       console.error('Error processing file:', error);
       setImportStatus('error');
+      setImportStep('upload');
       toast({
         title: 'Errore',
-        description: 'Errore durante la lettura del file Excel',
+        description: error instanceof Error ? error.message : 'Errore durante la lettura del file Excel',
         variant: 'destructive'
       });
     }
   };
 
   const handleImport = async () => {
+    if (!validationResult) return;
+
     setImportStatus('importing');
-    setImportMode('importing');
+    setImportStep('import');
     setImportProgress(0);
 
     try {
-      const results: UpsertResult[] = [];
-      let totalProgress = 0;
-      const sheets = importData.length;
-      
-      for (const sheet of importData) {
-        let result: UpsertResult;
-        
-        if (sheet.sheet.toLowerCase().includes('impeller') || sheet.sheet === 'Products') {
-          result = await upsertImpellers(sheet.data, conflictResolutions);
-        } else if (sheet.sheet.toLowerCase().includes('rubber') || sheet.sheet.toLowerCase().includes('compound')) {
-          result = await upsertRubberCompounds(sheet.data, conflictResolutions);
-        } else if (sheet.sheet.toLowerCase().includes('bushing')) {
-          result = await upsertBushings(sheet.data, conflictResolutions);
-        } else {
-          result = { inserted: 0, updated: 0, skipped: sheet.data.length, errors: ['Tipo foglio non riconosciuto'] };
-        }
-        
-        results.push(result);
-        totalProgress += (100 / sheets);
-        setImportProgress(Math.round(totalProgress));
-      }
-      
-      setImportResults(results);
+      const result = await upsertPriceListData(importData, conflictResolutions, importMode);
+      setImportResult(result);
       setImportStatus('completed');
+      setImportStep('complete');
+      setImportProgress(100);
       
-      const totalInserted = results.reduce((sum, r) => sum + r.inserted, 0);
-      const totalUpdated = results.reduce((sum, r) => sum + r.updated, 0);
-      const totalErrors = results.reduce((sum, r) => sum + r.errors.length, 0);
+      const hasErrors = result.errors.length > 0;
       
       toast({
-        title: 'Import completato',
-        description: `${totalInserted} inseriti, ${totalUpdated} aggiornati${totalErrors > 0 ? `, ${totalErrors} errori` : ''}`,
-        variant: totalErrors > 0 ? 'destructive' : 'default'
+        title: hasErrors ? 'Import Completato con Errori' : 'Import Completato',
+        description: `${result.inserted} inseriti, ${result.updated} aggiornati, ${result.skipped} saltati${hasErrors ? `, ${result.errors.length} errori` : ''}`,
+        variant: hasErrors ? 'destructive' : 'default'
       });
       
     } catch (error) {
       console.error('Import error:', error);
       setImportStatus('error');
       toast({
-        title: 'Errore import',
+        title: 'Errore Import',
         description: 'Si è verificato un errore durante l\'importazione',
         variant: 'destructive'
       });
     }
   };
 
-  const handleConflictResolutions = (resolutions: Record<string, ConflictResolution>) => {
+  const handleConflictResolutions = (resolutions: Record<string, PriceListConflictResolution>) => {
     setConflictResolutions(resolutions);
-    setImportMode('preview');
+    setShowConflictDialog(false);
+    setImportStatus('preview');
+    setImportStep('preview');
   };
 
-  const handleResolveAllConflicts = (resolution: ConflictResolution) => {
-    const allResolutions: Record<string, ConflictResolution> = {};
-    allConflicts.forEach(conflict => {
+  const handleResolveAllConflicts = (resolution: PriceListConflictResolution) => {
+    const allResolutions: Record<string, PriceListConflictResolution> = {};
+    validationResult?.conflicts.forEach(conflict => {
       allResolutions[conflict.id] = resolution;
     });
     setConflictResolutions(allResolutions);
-    setImportMode('preview');
+    setShowConflictDialog(false);
+    setImportStatus('preview');
+    setImportStep('preview');
   };
 
   const handleDownloadTemplate = () => {
-    downloadTemplate();
+    downloadPriceListTemplate();
     toast({
       title: "Template scaricato",
-      description: "Il template Excel è stato scaricato con successo",
+      description: "Il template Excel per listini prezzi è stato scaricato con successo",
     });
   };
 
@@ -317,14 +297,30 @@ export default function ImportExport() {
     }
   };
 
+  const getValidationIcon = (level: ValidationLevel) => {
+    switch (level) {
+      case 'critical': return <XCircle className="h-4 w-4 text-destructive" />;
+      case 'important': return <AlertTriangle className="h-4 w-4 text-warning" />;
+      case 'suggested': return <Info className="h-4 w-4 text-muted-foreground" />;
+    }
+  };
+
+  const getValidationBadgeVariant = (level: ValidationLevel) => {
+    switch (level) {
+      case 'critical': return 'destructive';
+      case 'important': return 'secondary';
+      case 'suggested': return 'outline';
+    }
+  };
+
   return (
     <AppLayout>
       <div className="space-y-6">
         {/* Header */}
         <div className="flex justify-between items-center">
           <div>
-            <h1 className="text-heading">Import/Export Dati</h1>
-            <p className="text-body">Gestione import ed export dati da/verso Excel</p>
+            <h1 className="text-heading">Import/Export Listini Prezzi</h1>
+            <p className="text-body">Sistema intelligente per import ed export di listini prezzi con gestione UPSERT</p>
           </div>
         </div>
 
@@ -332,7 +328,7 @@ export default function ImportExport() {
           <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="import" className="flex items-center gap-2">
               <Upload className="h-4 w-4" />
-              Import
+              Import Listini
             </TabsTrigger>
             <TabsTrigger value="export" className="flex items-center gap-2">
               <Download className="h-4 w-4" />
@@ -347,30 +343,28 @@ export default function ImportExport() {
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
                     <FileSpreadsheet className="h-5 w-5" />
-                    Template e Istruzioni
+                    Sistema Import Intelligente
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="grid md:grid-cols-2 gap-4">
                     <div className="space-y-3">
-                      <h4 className="font-medium">Come Importare:</h4>
+                      <h4 className="font-medium">Funzionalità Avanzate:</h4>
                       <ul className="list-disc list-inside text-sm text-muted-foreground space-y-1">
-                        <li>Scarica il template Excel con la struttura corretta</li>
-                        <li>Compila i dati seguendo le colonne predefinite</li>
-                        <li>I campi critici sono obbligatori per evitare errori</li>
-                        <li>Il sistema rileva automaticamente record esistenti</li>
-                        <li>Vengono proposti aggiornamenti per dati esistenti</li>
-                        <li>I conflitti vengono risolti interattivamente</li>
+                        <li><strong>UPSERT Automatico:</strong> Inserisce nuovi record o aggiorna esistenti</li>
+                        <li><strong>Validazione Intelligente:</strong> Critico/Importante/Suggerito</li>
+                        <li><strong>Gestione Conflitti:</strong> Risoluzione interattiva delle differenze</li>
+                        <li><strong>Modalità Flessibili:</strong> Append, Update, o Upsert completo</li>
+                        <li><strong>Log Tracciabile:</strong> Record dettagliato di tutte le operazioni</li>
                       </ul>
                     </div>
                     <div className="space-y-3">
-                      <h4 className="font-medium">Validazione Intelligente:</h4>
+                      <h4 className="font-medium">Campi Supportati:</h4>
                       <ul className="list-disc list-inside text-sm text-muted-foreground space-y-1">
-                        <li><Badge variant="destructive" className="text-xs">Critico</Badge> - Blocca l'import</li>
-                        <li><Badge variant="secondary" className="text-xs">Importante</Badge> - Avvisi da verificare</li>
-                        <li><Badge variant="outline" className="text-xs">Suggerito</Badge> - Migliorie consigliate</li>
-                        <li>UPSERT automatico: inserisce nuovi record o aggiorna esistenti</li>
-                        <li>Gestione conflitti: risoluzione interattiva delle differenze</li>
+                        <li><Badge variant="destructive" className="text-xs mr-1">Obbligatorio</Badge>product_code o product_name</li>
+                        <li><Badge variant="secondary" className="text-xs mr-1">Importante</Badge>customer_name, list_name, unit_price</li>
+                        <li><Badge variant="outline" className="text-xs mr-1">Opzionale</Badge>margin_percent, currency, notes</li>
+                        <li>Campi automatici: customer_code, valid_from/to</li>
                       </ul>
                     </div>
                   </div>
@@ -378,7 +372,7 @@ export default function ImportExport() {
                   <div className="flex flex-wrap gap-3 pt-4 border-t">
                     <Button onClick={handleDownloadTemplate} variant="outline">
                       <Download className="h-4 w-4 mr-2" />
-                      Scarica Template Excel
+                      Scarica Template Listini
                     </Button>
                     <Button variant="outline" asChild>
                       <a href="#" target="_blank" rel="noopener noreferrer">
@@ -390,12 +384,56 @@ export default function ImportExport() {
                 </CardContent>
               </Card>
 
+              {/* Import Configuration */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Settings className="h-5 w-5" />
+                    Configurazione Import
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    <div>
+                      <Label className="text-sm font-medium">Modalità Import</Label>
+                      <RadioGroup 
+                        value={importMode} 
+                        onValueChange={(value) => setImportMode(value as ImportMode)}
+                        className="flex flex-wrap gap-6 mt-2"
+                      >
+                        <div className="flex items-center space-x-2">
+                          <RadioGroupItem value="upsert" id="mode-upsert" />
+                          <Label htmlFor="mode-upsert">
+                            <span className="font-medium">UPSERT</span>
+                            <span className="block text-xs text-muted-foreground">Inserisce o aggiorna automaticamente</span>
+                          </Label>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <RadioGroupItem value="append" id="mode-append" />
+                          <Label htmlFor="mode-append">
+                            <span className="font-medium">APPEND</span>
+                            <span className="block text-xs text-muted-foreground">Solo nuovi record</span>
+                          </Label>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <RadioGroupItem value="update" id="mode-update" />
+                          <Label htmlFor="mode-update">
+                            <span className="font-medium">UPDATE</span>
+                            <span className="block text-xs text-muted-foreground">Solo record esistenti</span>
+                          </Label>
+                        </div>
+                      </RadioGroup>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
               {/* File Upload */}
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
                     <Upload className="h-5 w-5" />
-                    Caricamento File
+                    Caricamento File Excel
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
@@ -406,7 +444,7 @@ export default function ImportExport() {
                       onChange={handleFileUpload}
                       className="hidden"
                       id="file-upload"
-                      disabled={importStatus === 'uploading' || importStatus === 'validating'}
+                      disabled={isValidating || isImporting}
                     />
                     <label
                       htmlFor="file-upload"
@@ -420,18 +458,19 @@ export default function ImportExport() {
                           {file ? file.name : 'Seleziona file Excel'}
                         </div>
                         <div className="text-sm text-muted-foreground">
-                          Formato supportato: .xlsx, .xls
+                          Formato supportato: .xlsx, .xls (listini prezzi)
                         </div>
                       </div>
                     </label>
                   </div>
 
                   {/* Progress */}
-                  {(importStatus === 'uploading' || importStatus === 'validating') && (
+                  {(importStatus === 'uploading' || importStatus === 'validating' || importStatus === 'importing') && (
                     <div className="space-y-2">
                       <div className="flex justify-between text-sm">
                         <span>
-                          {importStatus === 'uploading' ? 'Caricamento...' : 'Validazione...'}
+                          {importStatus === 'uploading' ? 'Caricamento...' : 
+                           importStatus === 'validating' ? 'Validazione intelligente...' : 'Import in corso...'}
                         </span>
                         <span>{importProgress}%</span>
                       </div>
@@ -442,362 +481,221 @@ export default function ImportExport() {
               </Card>
 
               {/* Validation Results - Preview Mode */}
-              {importMode === 'preview' && validationResults.length > 0 && (
+              {importStatus === 'preview' && validationResult && (
                 <Card>
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2">
                       <Eye className="h-5 w-5" />
-                      Anteprima Import - Analisi Intelligente
+                      Anteprima Import - Pronto per Esecuzione
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-4">
                     {/* Summary Statistics */}
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 bg-muted/50 rounded-lg">
+                    <div className="grid grid-cols-2 md:grid-cols-5 gap-4 p-4 bg-muted/50 rounded-lg">
                       <div className="text-center">
-                        <div className="flex items-center justify-center gap-2 text-green-600">
-                          <Plus className="h-5 w-5" />
-                          <span className="text-2xl font-bold">
-                            {validationResults.reduce((sum, r) => sum + r.proposedChanges.inserts, 0)}
-                          </span>
-                        </div>
-                        <p className="text-sm text-muted-foreground">Nuovi record</p>
+                        <div className="text-2xl font-bold text-primary">{validationResult.summary.newCustomers}</div>
+                        <div className="text-sm text-muted-foreground">Nuovi Clienti</div>
                       </div>
                       <div className="text-center">
-                        <div className="flex items-center justify-center gap-2 text-blue-600">
-                          <Edit className="h-5 w-5" />
-                          <span className="text-2xl font-bold">
-                            {validationResults.reduce((sum, r) => sum + r.proposedChanges.updates, 0)}
-                          </span>
-                        </div>
-                        <p className="text-sm text-muted-foreground">Aggiornamenti</p>
+                        <div className="text-2xl font-bold text-secondary">{validationResult.summary.newPriceLists}</div>
+                        <div className="text-sm text-muted-foreground">Nuovi Listini</div>
                       </div>
                       <div className="text-center">
-                        <div className="flex items-center justify-center gap-2 text-orange-600">
-                          <SkipForward className="h-5 w-5" />
-                          <span className="text-2xl font-bold">
-                            {validationResults.reduce((sum, r) => sum + r.proposedChanges.skipped, 0)}
-                          </span>
-                        </div>
-                        <p className="text-sm text-muted-foreground">Saltati</p>
+                        <div className="text-2xl font-bold text-green-600">{validationResult.summary.newItems}</div>
+                        <div className="text-sm text-muted-foreground">Nuovi Prezzi</div>
+                      </div>
+                      <div className="text-center">
+                        <div className="text-2xl font-bold text-orange-600">{validationResult.summary.updatedItems}</div>
+                        <div className="text-sm text-muted-foreground">Prezzi Aggiornati</div>
+                      </div>
+                      <div className="text-center">
+                        <div className="text-2xl font-bold text-yellow-600">{validationResult.summary.potentialConflicts}</div>
+                        <div className="text-sm text-muted-foreground">Conflitti Risolti</div>
                       </div>
                     </div>
 
-                    {/* Validation Messages by Sheet */}
-                    {validationResults.map((result, index) => (
-                      <div key={index} className="border rounded-lg p-4">
-                        <div className="flex items-center justify-between mb-3">
-                          <h4 className="font-medium">{result.sheet}</h4>
-                          <Badge variant={result.canProceed ? 'default' : 'destructive'}>
-                            {result.rows} righe
-                          </Badge>
-                        </div>
-                        
-                        {/* Critical Messages */}
-                        {result.validMessages.filter(m => m.level === 'critical').length > 0 && (
-                          <div className="space-y-2">
-                            <div className="flex items-center gap-2 text-destructive">
-                              <XCircle className="h-4 w-4" />
-                              <span className="font-medium">
-                                Errori Critici ({result.validMessages.filter(m => m.level === 'critical').length})
-                              </span>
-                            </div>
-                            <ul className="list-disc list-inside space-y-1 text-sm text-muted-foreground pl-6">
-                              {result.validMessages.filter(m => m.level === 'critical').map((msg, msgIndex) => (
-                                <li key={msgIndex}>Riga {msg.rowNumber}: {msg.message}</li>
-                              ))}
-                            </ul>
+                    {/* Validation Messages */}
+                    {validationResult.messages.length > 0 && (
+                      <div className="space-y-2">
+                        <h4 className="font-medium">Messaggi di Validazione:</h4>
+                        <ScrollArea className="h-32 border rounded-md p-2">
+                          <div className="space-y-1">
+                            {validationResult.messages.map((msg, index) => (
+                              <div key={index} className="flex items-center gap-2 text-sm p-2 rounded border-l-2" 
+                                   style={{ borderLeftColor: msg.level === 'critical' ? 'hsl(var(--destructive))' : 
+                                                             msg.level === 'important' ? 'hsl(var(--warning))' : 
+                                                             'hsl(var(--muted-foreground))' }}>
+                                {getValidationIcon(msg.level)}
+                                <Badge variant={getValidationBadgeVariant(msg.level)} className="text-xs">
+                                  Riga {msg.rowNumber}
+                                </Badge>
+                                <span className="font-medium">{msg.field}:</span>
+                                <span>{msg.message}</span>
+                              </div>
+                            ))}
                           </div>
-                        )}
-                        
-                        {/* Important Messages */}
-                        {result.validMessages.filter(m => m.level === 'important').length > 0 && (
-                          <div className="space-y-2 mt-3">
-                            <div className="flex items-center gap-2 text-yellow-600">
-                              <AlertCircle className="h-4 w-4" />
-                              <span className="font-medium">
-                                Avvisi Importanti ({result.validMessages.filter(m => m.level === 'important').length})
-                              </span>
-                            </div>
-                            <ul className="list-disc list-inside space-y-1 text-sm text-muted-foreground pl-6">
-                              {result.validMessages.filter(m => m.level === 'important').slice(0, 5).map((msg, msgIndex) => (
-                                <li key={msgIndex}>Riga {msg.rowNumber}: {msg.message}</li>
-                              ))}
-                              {result.validMessages.filter(m => m.level === 'important').length > 5 && (
-                                <li className="text-muted-foreground">
-                                  ... e altri {result.validMessages.filter(m => m.level === 'important').length - 5} avvisi
-                                </li>
-                              )}
-                            </ul>
-                          </div>
-                        )}
-                        
-                        {/* Conflicts Summary */}
-                        {result.conflicts.length > 0 && (
-                          <div className="space-y-2 mt-3">
-                            <div className="flex items-center gap-2 text-orange-600">
-                              <AlertCircle className="h-4 w-4" />
-                              <span className="font-medium">
-                                Conflitti da Risolvere ({result.conflicts.length})
-                              </span>
-                            </div>
-                            <p className="text-sm text-muted-foreground pl-6">
-                              Record esistenti con valori diversi
-                            </p>
-                          </div>
-                        )}
-                        
-                        {result.canProceed && result.validMessages.filter(m => m.level === 'critical').length === 0 && (
-                          <div className="flex items-center gap-2 text-green-600 mt-3">
-                            <CheckCircle className="h-4 w-4" />
-                            <span>Pronto per l'import</span>
-                          </div>
-                        )}
+                        </ScrollArea>
                       </div>
-                    ))}
-                    
-                    {/* Import Actions */}
-                    <div className="flex justify-between items-center pt-4 border-t">
-                      <div className="text-sm text-muted-foreground">
-                        {!validationResults.every(r => r.canProceed)
-                          ? 'Correggere gli errori critici prima di procedere'
-                          : allConflicts.length > 0
-                          ? 'Conflitti rilevati - risolverli per procedere'
-                          : 'Analisi completata, pronto per l\'import'
-                        }
-                      </div>
-                      <div className="flex gap-2">
-                        <Button variant="outline" onClick={resetImport}>
-                          <RefreshCw className="h-4 w-4 mr-2" />
-                          Ricomincia
-                        </Button>
-                        {allConflicts.length > 0 && (
-                          <Button 
-                            variant="outline"
-                            onClick={() => setShowConflictDialog(true)}
-                          >
-                            <AlertCircle className="h-4 w-4 mr-2" />
-                            Risolvi Conflitti ({allConflicts.length})
-                          </Button>
-                        )}
-                        <Button 
-                          onClick={handleImport}
-                          disabled={!validationResults.every(r => r.canProceed)}
-                        >
-                          {allConflicts.length > 0 && Object.keys(conflictResolutions).length === 0 
-                            ? 'Risolvi Conflitti Prima' 
-                            : 'Procedi con Import'
-                          }
-                        </Button>
-                      </div>
+                    )}
+
+                    {/* Action Buttons */}
+                    <div className="flex gap-3 pt-4 border-t">
+                      <Button 
+                        onClick={handleImport}
+                        disabled={!validationResult.canProceed || isImporting}
+                        className="flex-1"
+                      >
+                        <TrendingUp className="h-4 w-4 mr-2" />
+                        Esegui Import ({importData.length} righe)
+                      </Button>
+                      <Button 
+                        variant="outline"
+                        onClick={resetImport}
+                      >
+                        <RefreshCw className="h-4 w-4 mr-2" />
+                        Reset
+                      </Button>
                     </div>
                   </CardContent>
                 </Card>
               )}
 
               {/* Import Results */}
-              {importMode === 'importing' && importResults.length > 0 && (
+              {importStatus === 'completed' && importResult && (
                 <Card>
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2">
                       <CheckCircle className="h-5 w-5 text-green-600" />
-                      Risultati Import
+                      Import Completato
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-4">
-                    {importResults.map((result, index) => (
-                      <div key={index} className="border rounded-lg p-4">
-                        <div className="grid grid-cols-3 gap-4 text-center">
-                          <div>
-                            <div className="text-2xl font-bold text-green-600">{result.inserted}</div>
-                            <div className="text-sm text-muted-foreground">Inseriti</div>
-                          </div>
-                          <div>
-                            <div className="text-2xl font-bold text-blue-600">{result.updated}</div>
-                            <div className="text-sm text-muted-foreground">Aggiornati</div>
-                          </div>
-                          <div>
-                            <div className="text-2xl font-bold text-orange-600">{result.skipped}</div>
-                            <div className="text-sm text-muted-foreground">Saltati</div>
-                          </div>
-                        </div>
-                        
-                        {result.errors.length > 0 && (
-                          <div className="mt-4 space-y-2">
-                            <div className="flex items-center gap-2 text-destructive">
-                              <XCircle className="h-4 w-4" />
-                              <span className="font-medium">Errori ({result.errors.length})</span>
-                            </div>
-                            <ul className="list-disc list-inside space-y-1 text-sm text-muted-foreground pl-6">
-                              {result.errors.map((error, errorIndex) => (
-                                <li key={errorIndex}>{error}</li>
-                              ))}
-                            </ul>
-                          </div>
-                        )}
+                    {/* Results Summary */}
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-4 bg-green-50 dark:bg-green-950/20 rounded-lg">
+                      <div className="text-center">
+                        <div className="text-2xl font-bold text-green-600">{importResult.inserted}</div>
+                        <div className="text-sm text-muted-foreground">Inseriti</div>
                       </div>
-                    ))}
+                      <div className="text-center">
+                        <div className="text-2xl font-bold text-blue-600">{importResult.updated}</div>
+                        <div className="text-sm text-muted-foreground">Aggiornati</div>
+                      </div>
+                      <div className="text-center">
+                        <div className="text-2xl font-bold text-yellow-600">{importResult.skipped}</div>
+                        <div className="text-sm text-muted-foreground">Saltati</div>
+                      </div>
+                      <div className="text-center">
+                        <div className="text-2xl font-bold text-red-600">{importResult.errors.length}</div>
+                        <div className="text-sm text-muted-foreground">Errori</div>
+                      </div>
+                    </div>
+
+                    {/* Errors */}
+                    {importResult.errors.length > 0 && (
+                      <div className="space-y-2">
+                        <h4 className="font-medium text-destructive">Errori Riscontrati:</h4>
+                        <ScrollArea className="h-32 border rounded-md p-2 bg-destructive/5">
+                          <div className="space-y-1">
+                            {importResult.errors.map((error, index) => (
+                              <div key={index} className="text-sm text-destructive p-2 border-l-2 border-destructive/50">
+                                {error}
+                              </div>
+                            ))}
+                          </div>
+                        </ScrollArea>
+                      </div>
+                    )}
+
+                    {/* Actions */}
+                    <div className="flex gap-3 pt-4 border-t">
+                      <Button 
+                        onClick={() => downloadImportLog(importResult.log)}
+                        variant="outline"
+                      >
+                        <Archive className="h-4 w-4 mr-2" />
+                        Scarica Log Dettagliato
+                      </Button>
+                      <Button 
+                        onClick={resetImport}
+                        variant="outline"
+                      >
+                        <RefreshCw className="h-4 w-4 mr-2" />
+                        Nuovo Import
+                      </Button>
+                    </div>
                   </CardContent>
                 </Card>
               )}
-
-              {/* Conflict Resolution Dialog */}
-              <ConflictResolutionDialog
-                open={showConflictDialog}
-                onOpenChange={setShowConflictDialog}
-                conflicts={allConflicts}
-                onResolve={handleConflictResolutions}
-                onResolveAll={handleResolveAllConflicts}
-              />
             </div>
           </TabsContent>
 
           <TabsContent value="export" className="space-y-6">
+            {/* Export Section - Keep existing implementation */}
             <div className="grid gap-6">
-              {/* Export Options */}
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
                     <Download className="h-5 w-5" />
-                    Opzioni Export
+                    Export Dati
                   </CardTitle>
                 </CardHeader>
-                <CardContent className="space-y-6">
-                  <div className="grid md:grid-cols-2 gap-6">
-                    {/* Single Category Exports */}
-                    <div className="space-y-4">
-                      <h4 className="font-medium">Export per Categoria</h4>
-                      <div className="space-y-3">
-                        <div className="flex items-center justify-between p-3 border rounded-lg">
-                          <div className="flex items-center gap-3">
-                            <FileSpreadsheet className="h-5 w-5 text-primary" />
-                            <div>
-                              <div className="font-medium">Prodotti</div>
-                              <div className="text-sm text-muted-foreground">Giranti, mescole, bussole</div>
-                            </div>
-                          </div>
-                          <div className="flex gap-2">
-                            <Button 
-                              size="sm" 
-                              variant="outline" 
-                              onClick={() => handleExport('products', 'xlsx')}
-                            >
-                              XLSX
-                            </Button>
-                            <Button 
-                              size="sm" 
-                              variant="outline" 
-                              onClick={() => handleExport('products', 'csv')}
-                            >
-                              CSV
-                            </Button>
-                          </div>
-                        </div>
-                        
-                        <div className="flex items-center justify-between p-3 border rounded-lg">
-                          <div className="flex items-center gap-3">
-                            <FileText className="h-5 w-5 text-primary" />
-                            <div>
-                              <div className="font-medium">Clienti</div>
-                              <div className="text-sm text-muted-foreground">Anagrafica clienti</div>
-                            </div>
-                          </div>
-                          <div className="flex gap-2">
-                            <Button 
-                              size="sm" 
-                              variant="outline" 
-                              onClick={() => handleExport('customers', 'xlsx')}
-                            >
-                              XLSX
-                            </Button>
-                            <Button 
-                              size="sm" 
-                              variant="outline" 
-                              onClick={() => handleExport('customers', 'csv')}
-                            >
-                              CSV
-                            </Button>
-                          </div>
-                        </div>
-                        
-                        <div className="flex items-center justify-between p-3 border rounded-lg">
-                          <div className="flex items-center gap-3">
-                            <FileSpreadsheet className="h-5 w-5 text-primary" />
-                            <div>
-                              <div className="font-medium">RFQ</div>
-                              <div className="text-sm text-muted-foreground">Richieste di quotazione</div>
-                            </div>
-                          </div>
-                          <div className="flex gap-2">
-                            <Button 
-                              size="sm" 
-                              variant="outline" 
-                              onClick={() => handleExport('rfq', 'xlsx')}
-                            >
-                              XLSX
-                            </Button>
-                            <Button 
-                              size="sm" 
-                              variant="outline" 
-                              onClick={() => handleExport('rfq', 'csv')}
-                            >
-                              CSV
-                            </Button>
-                          </div>
-                        </div>
-                        
-                        <div className="flex items-center justify-between p-3 border rounded-lg">
-                          <div className="flex items-center gap-3">
-                            <FileText className="h-5 w-5 text-primary" />
-                            <div>
-                              <div className="font-medium">Equivalenze</div>
-                              <div className="text-sm text-muted-foreground">Cross-references</div>
-                            </div>
-                          </div>
-                          <div className="flex gap-2">
-                            <Button 
-                              size="sm" 
-                              variant="outline" 
-                              onClick={() => handleExport('equivalences', 'xlsx')}
-                            >
-                              XLSX
-                            </Button>
-                            <Button 
-                              size="sm" 
-                              variant="outline" 
-                              onClick={() => handleExport('equivalences', 'csv')}
-                            >
-                              CSV
-                            </Button>
-                          </div>
-                        </div>
+                <CardContent className="space-y-4">
+                  <div className="grid md:grid-cols-2 gap-4">
+                    <div className="space-y-3">
+                      <h4 className="font-medium">Export per Categoria:</h4>
+                      <div className="grid gap-2">
+                        <Button 
+                          variant="outline" 
+                          onClick={() => handleExport('products')}
+                          className="justify-start"
+                        >
+                          <FileSpreadsheet className="h-4 w-4 mr-2" />
+                          Prodotti/Impellers
+                        </Button>
+                        <Button 
+                          variant="outline" 
+                          onClick={() => handleExport('customers')}
+                          className="justify-start"
+                        >
+                          <FileText className="h-4 w-4 mr-2" />
+                          Clienti
+                        </Button>
+                        <Button 
+                          variant="outline" 
+                          onClick={() => handleExport('rfq')}
+                          className="justify-start"
+                        >
+                          <FileText className="h-4 w-4 mr-2" />
+                          RFQ
+                        </Button>
+                        <Button 
+                          variant="outline" 
+                          onClick={() => handleExport('equivalences')}
+                          className="justify-start"
+                        >
+                          <FileText className="h-4 w-4 mr-2" />
+                          Equivalenze
+                        </Button>
                       </div>
                     </div>
-                    
-                    {/* Complete Export */}
-                    <div className="space-y-4">
-                      <h4 className="font-medium">Export Completo</h4>
-                      <div className="border rounded-lg p-6 text-center space-y-4">
-                        <div className="mx-auto w-16 h-16 bg-primary/10 rounded-lg flex items-center justify-center">
-                          <Download className="h-8 w-8 text-primary" />
-                        </div>
-                        <div>
-                          <div className="font-medium text-lg">Backup Completo</div>
-                          <div className="text-sm text-muted-foreground">
-                            Tutti i dati in un unico file con fogli separati
-                          </div>
-                        </div>
-                        <div className="flex justify-center gap-3">
-                          <Button onClick={() => handleExport('complete', 'xlsx')}>
-                            <Download className="h-4 w-4 mr-2" />
-                            Download XLSX
-                          </Button>
-                          <Button 
-                            variant="outline" 
-                            onClick={() => handleExport('complete', 'csv')}
-                          >
-                            Download CSV
-                          </Button>
-                        </div>
+                    <div className="space-y-3">
+                      <h4 className="font-medium">Export Completo:</h4>
+                      <div className="grid gap-2">
+                        <Button 
+                          onClick={() => handleExport('complete', 'xlsx')}
+                          className="justify-start"
+                        >
+                          <Archive className="h-4 w-4 mr-2" />
+                          Backup Completo (XLSX)
+                        </Button>
+                        <Button 
+                          variant="outline"
+                          onClick={() => handleExport('complete', 'csv')}
+                          className="justify-start"
+                        >
+                          <FileText className="h-4 w-4 mr-2" />
+                          Backup Completo (CSV)
+                        </Button>
                       </div>
                     </div>
                   </div>
@@ -806,6 +704,17 @@ export default function ImportExport() {
             </div>
           </TabsContent>
         </Tabs>
+
+        {/* Conflict Resolution Dialog */}
+        {validationResult && (
+          <PriceListConflictDialog
+            open={showConflictDialog}
+            onOpenChange={setShowConflictDialog}
+            conflicts={validationResult.conflicts}
+            onResolve={handleConflictResolutions}
+            onResolveAll={handleResolveAllConflicts}
+          />
+        )}
       </div>
     </AppLayout>
   );
