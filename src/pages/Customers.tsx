@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { useKeyboardShortcutsContext } from '@/contexts/KeyboardShortcutsContext';
@@ -32,14 +32,10 @@ export default function Customers() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [showNewCustomerDialog, setShowNewCustomerDialog] = useState(false);
-  
-  // Debug: Log when the dialog state changes
-  useEffect(() => {
-    console.log('showNewCustomerDialog state changed to:', showNewCustomerDialog);
-  }, [showNewCustomerDialog]);
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
 
   // Load customers from database
-  const loadCustomers = async () => {
+  const loadCustomers = useCallback(async () => {
     try {
       setIsLoading(true);
       const { data, error } = await supabase
@@ -68,11 +64,11 @@ export default function Customers() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [toast]);
 
   useEffect(() => {
     loadCustomers();
-  }, []);
+  }, [loadCustomers]);
 
   const filteredCustomers = customers.filter(customer =>
     customer.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -93,8 +89,7 @@ export default function Customers() {
         ctrlKey: true,
         description: 'Focus ricerca',
         action: () => {
-          const searchInput = document.querySelector('input[placeholder*="ricerca"]') as HTMLInputElement;
-          searchInput?.focus();
+          searchInputRef.current?.focus();
         },
         category: 'search' as const
       },
@@ -133,12 +128,7 @@ export default function Customers() {
               actions={[{
                 icon: Plus,
                 label: 'Nuovo Cliente',
-                onClick: () => {
-                  console.log('Nuovo Cliente button clicked!');
-                  console.log('Current showNewCustomerDialog state:', showNewCustomerDialog);
-                  setShowNewCustomerDialog(true);
-                  console.log('setShowNewCustomerDialog(true) called');
-                },
+                onClick: () => setShowNewCustomerDialog(true),
                 variant: 'default'
               }]}
             />
@@ -154,6 +144,7 @@ export default function Customers() {
         </div>
 
         <SearchFilterCard
+          ref={searchInputRef}
           searchTerm={searchTerm}
           onSearchChange={setSearchTerm}
           placeholder="Cerca per nome, codice cliente o partita IVA..."
@@ -356,23 +347,17 @@ export default function Customers() {
             icon={Users}
             title="Nessun cliente trovato"
             description="Prova a modificare i criteri di ricerca o aggiungi un nuovo cliente."
-              actionButton={{
-                label: "Aggiungi Cliente",
-                onClick: () => {
-                  console.log('Empty state "Aggiungi Cliente" button clicked!');
-                  setShowNewCustomerDialog(true);
-                },
-                icon: Plus
-              }}
+            actionButton={{
+              label: "Aggiungi Cliente",
+              onClick: () => setShowNewCustomerDialog(true),
+              icon: Plus
+            }}
           />
         )}
         
-        <NewCustomerDialog 
+        <NewCustomerDialog
           open={showNewCustomerDialog}
-          onOpenChange={(open) => {
-            console.log('NewCustomerDialog onOpenChange called with:', open);
-            setShowNewCustomerDialog(open);
-          }}
+          onOpenChange={setShowNewCustomerDialog}
           onCustomerCreated={loadCustomers}
         />
       </div>
