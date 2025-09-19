@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { useKeyboardShortcutsContext } from '@/contexts/KeyboardShortcutsContext';
 import { Badge } from '@/components/ui/badge';
@@ -23,6 +24,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 
 export default function Customers() {
+  const navigate = useNavigate();
   const { registerShortcut, unregisterShortcut } = useKeyboardShortcutsContext();
   const { toast } = useToast();
   const [searchTerm, setSearchTerm] = useState('');
@@ -232,13 +234,13 @@ export default function Customers() {
                         {
                           icon: Eye,
                           label: 'Dettagli',
-                          onClick: () => {},
+                          onClick: () => navigate(`/customers/${customer.id}`),
                           variant: 'outline'
                         },
                         {
                           icon: Edit,
                           label: 'Modifica',
-                          onClick: () => {},
+                          onClick: () => navigate(`/customers/${customer.id}/edit`),
                           variant: 'outline'
                         }
                       ]}
@@ -247,7 +249,7 @@ export default function Customers() {
                       actions={[{
                         icon: FileText,
                         label: 'Listini',
-                        onClick: () => {},
+                        onClick: () => navigate(`/customers/${customer.id}/price-lists`),
                         variant: 'ghost'
                       }]}
                     />
@@ -323,19 +325,19 @@ export default function Customers() {
                             {
                               icon: Eye,
                               label: 'Dettagli',
-                              onClick: () => {},
+                              onClick: () => navigate(`/customers/${customer.id}`),
                               variant: 'outline'
                             },
                             {
                               icon: Edit,
                               label: 'Modifica',
-                              onClick: () => {},
+                              onClick: () => navigate(`/customers/${customer.id}/edit`),
                               variant: 'outline'
                             },
                             {
                               icon: FileText,
                               label: 'Listini',
-                              onClick: () => {},
+                              onClick: () => navigate(`/customers/${customer.id}/price-lists`),
                               variant: 'ghost'
                             }
                           ]}

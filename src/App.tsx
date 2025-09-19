@@ -11,6 +11,9 @@ import ProductDetail from "./pages/ProductDetail";
 import ProductEdit from "./pages/ProductEdit";
 import ProductNew from "./pages/ProductNew";
 import Customers from "./pages/Customers";
+import CustomerDetail from "./pages/CustomerDetail";
+import CustomerEdit from "./pages/CustomerEdit";
+import CustomerPriceLists from "./pages/CustomerPriceLists";
 import RFQ from "./pages/RFQ";
 import RFQNew from "./pages/RFQNew";
 import Search from "./pages/Search";
@@ -37,6 +40,9 @@ const App = () => (
           <Route path="/products/:id" element={<ProductDetail />} />
           <Route path="/products/:id/edit" element={<ProductEdit />} />
           <Route path="/customers" element={<Customers />} />
+          <Route path="/customers/:id" element={<CustomerDetail />} />
+          <Route path="/customers/:id/edit" element={<CustomerEdit />} />
+          <Route path="/customers/:id/price-lists" element={<CustomerPriceLists />} />
           <Route path="/rfq" element={<RFQ />} />
           <Route path="/rfq/new" element={<RFQNew />} />
           <Route path="/search" element={<Search />} />
