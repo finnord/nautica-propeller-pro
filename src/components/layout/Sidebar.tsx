@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { 
   LayoutDashboard, 
@@ -12,6 +11,7 @@ import {
   ChevronRight
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useSidebar } from '@/contexts/SidebarContext';
 
 const navigation = [
   { name: 'Dashboard', href: '/', icon: LayoutDashboard },
@@ -24,7 +24,7 @@ const navigation = [
 ];
 
 export const Sidebar = () => {
-  const [collapsed, setCollapsed] = useState(false);
+  const { collapsed, toggleCollapsed } = useSidebar();
   const location = useLocation();
 
   return (
@@ -44,7 +44,7 @@ export const Sidebar = () => {
           </div>
         )}
         <button
-          onClick={() => setCollapsed(!collapsed)}
+          onClick={toggleCollapsed}
           className="p-1 rounded-md hover:bg-muted transition-colors"
         >
           {collapsed ? (
@@ -83,10 +83,14 @@ export const Sidebar = () => {
 
       {/* Footer */}
       <div className="p-4 border-t border-border">
-        {!collapsed && (
+        {!collapsed ? (
           <div className="text-xs text-muted-foreground">
             <p>v1.0.0 - Fase 1</p>
             <p>Core Prodotti</p>
+          </div>
+        ) : (
+          <div className="text-xs text-muted-foreground text-center">
+            <p>v1.0</p>
           </div>
         )}
       </div>

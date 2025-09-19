@@ -111,22 +111,24 @@ export default function Customers() {
           title="Gestione Clienti"
           description="Anagrafica clienti e gestione listini prezzi"
           actions={
-            <div className="flex gap-2">
-              <ViewModeToggle 
-                viewMode={viewMode} 
-                onViewModeChange={setViewMode} 
-              />
-              <ActionButtonGroup
-                actions={[{
-                  icon: Plus,
-                  label: 'Nuovo Cliente',
-                  onClick: () => {},
-                  variant: 'default'
-                }]}
-              />
-            </div>
+            <ActionButtonGroup
+              actions={[{
+                icon: Plus,
+                label: 'Nuovo Cliente',
+                onClick: () => {},
+                variant: 'default'
+              }]}
+            />
           }
         />
+
+        <div className="flex justify-between items-center">
+          <div></div>
+          <ViewModeToggle 
+            viewMode={viewMode} 
+            onViewModeChange={setViewMode} 
+          />
+        </div>
 
         <SearchFilterCard
           searchTerm={searchTerm}

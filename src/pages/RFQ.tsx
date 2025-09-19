@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
+import { useKeyboardShortcutsContext } from '@/contexts/KeyboardShortcutsContext';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -104,6 +105,7 @@ const getStatusIcon = (status: RFQStatus) => {
 };
 
 export default function RFQ() {
+  const { registerShortcut, unregisterShortcut } = useKeyboardShortcutsContext();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedStatus, setSelectedStatus] = useState<RFQStatus | 'all'>('all');
   const [viewMode, setViewMode] = useState<'cards' | 'table'>('cards');
@@ -139,6 +141,50 @@ export default function RFQ() {
     // TODO: Implement quote functionality
     console.log('Quote RFQ:', rfqId);
   };
+
+  // Register keyboard shortcuts
+  useEffect(() => {
+    const shortcuts = [
+      {
+        key: 'tab',
+        description: 'Cambia visualizzazione (cards/table)',
+        action: () => setViewMode(prev => prev === 'cards' ? 'table' : 'cards'),
+        category: 'view' as const
+      },
+      {
+        key: 'k',
+        ctrlKey: true,
+        description: 'Focus ricerca',
+        action: () => {
+          const searchInput = document.querySelector('input[placeholder*="ricerca"]') as HTMLInputElement;
+          searchInput?.focus();
+        },
+        category: 'search' as const
+      },
+      {
+        key: 'n',
+        ctrlKey: true,
+        description: 'Nuova RFQ',
+        action: () => window.location.href = '/rfq/new',
+        category: 'actions' as const
+      },
+      {
+        key: 'escape',
+        description: 'Reset filtri',
+        action: () => {
+          setSearchTerm('');
+          setSelectedStatus('all');
+        },
+        category: 'search' as const
+      }
+    ];
+
+    shortcuts.forEach(registerShortcut);
+
+    return () => {
+      shortcuts.forEach(shortcut => unregisterShortcut(shortcut.key));
+    };
+  }, [registerShortcut, unregisterShortcut]);
 
   return (
     <AppLayout>

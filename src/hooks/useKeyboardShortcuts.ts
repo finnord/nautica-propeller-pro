@@ -1,6 +1,7 @@
 import { useEffect, useCallback, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ShortcutAction } from '@/types/shortcuts';
+import { useSidebar } from '@/contexts/SidebarContext';
 
 export const useKeyboardShortcuts = () => {
   const [shortcuts, setShortcuts] = useState<ShortcutAction[]>([]);
@@ -8,6 +9,7 @@ export const useKeyboardShortcuts = () => {
   const [isSequenceMode, setIsSequenceMode] = useState(false);
   const [sequenceBuffer, setSequenceBuffer] = useState('');
   const navigate = useNavigate();
+  const { toggleCollapsed } = useSidebar();
 
   const registerShortcut = useCallback((shortcut: ShortcutAction) => {
     setShortcuts(prev => {
@@ -41,6 +43,13 @@ export const useKeyboardShortcuts = () => {
     if (key === '?' && !ctrlKey && !altKey && !shiftKey) {
       event.preventDefault();
       toggleHelp();
+      return;
+    }
+
+    // Handle sidebar toggle (B key)
+    if (key === 'b' && !ctrlKey && !altKey && !shiftKey) {
+      event.preventDefault();
+      toggleCollapsed();
       return;
     }
 
@@ -111,7 +120,7 @@ export const useKeyboardShortcuts = () => {
       event.preventDefault();
       matchingShortcut.action();
     }
-  }, [shortcuts, showHelp, isSequenceMode, sequenceBuffer, navigate, toggleHelp]);
+  }, [shortcuts, showHelp, isSequenceMode, sequenceBuffer, navigate, toggleHelp, toggleCollapsed]);
 
   useEffect(() => {
     document.addEventListener('keydown', handleKeyDown);
