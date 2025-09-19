@@ -147,12 +147,12 @@ export const PriceListImportDialog = ({ open, onOpenChange, onSuccess }: PriceLi
             .eq('model', importRow.product_code)
             .maybeSingle();
 
-          if (productData && productData.base_cost) {
+          if (productData?.id) {
             importRow.productFound = true;
-            importRow.baseCost = productData.base_cost;
+            importRow.baseCost = productData.base_cost || 0;
             
-            // Calculate margins
-            if (importRow.unit_price > 0) {
+            // Calculate margins only if base_cost exists and unit_price is valid
+            if (importRow.unit_price > 0 && productData.base_cost !== null) {
               importRow.marginEuro = importRow.unit_price - productData.base_cost;
               importRow.marginPercent = ((importRow.unit_price - productData.base_cost) / importRow.unit_price) * 100;
             }

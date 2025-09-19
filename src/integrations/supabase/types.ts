@@ -436,6 +436,7 @@ export type Database = {
       }
       propellers: {
         Row: {
+          base_cost: number | null
           blades: number | null
           created_at: string | null
           description: string | null
@@ -448,6 +449,7 @@ export type Database = {
           updated_at: string | null
         }
         Insert: {
+          base_cost?: number | null
           blades?: number | null
           created_at?: string | null
           description?: string | null
@@ -460,6 +462,7 @@ export type Database = {
           updated_at?: string | null
         }
         Update: {
+          base_cost?: number | null
           blades?: number | null
           created_at?: string | null
           description?: string | null
