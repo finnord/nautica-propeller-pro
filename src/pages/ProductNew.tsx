@@ -12,40 +12,46 @@ import {
   Save,
   Package
 } from 'lucide-react';
-import { Product, ProductType, UnitOfMeasure } from '@/types';
+import { ProductType, UnitOfMeasure } from '@/types';
+import { useProducts } from '@/hooks/useProducts';
 
 export default function ProductNew() {
   const navigate = useNavigate();
+  const { createProduct } = useProducts();
   
-  const [formData, setFormData] = useState<Partial<Product>>({
-    product_type: 'impeller',
-    uom: 'pcs',
-    gross_margin_pct: 35
+  const [formData, setFormData] = useState({
+    model: '',
+    description: '',
+    diameter: 0,
+    pitch: 0,
+    blades: 3,
+    material_type: '',
+    base_cost: 0,
+    status: 'active'
   });
   const [isSaving, setIsSaving] = useState(false);
 
   const handleSave = async () => {
+    if (!formData.model.trim()) {
+      return;
+    }
+    
     setIsSaving(true);
     
-    // Simulate API call
-    setTimeout(() => {
-      setIsSaving(false);
+    try {
+      await createProduct(formData);
       navigate('/products');
-    }, 1000);
+    } catch (error) {
+      console.error('Error creating product:', error);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
-  const handleInputChange = (field: keyof Product, value: any) => {
+  const handleInputChange = (field: string, value: any) => {
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
-  // Calculate list price from cost and margin
-  const calculateListPrice = () => {
-    if (formData.base_cost && formData.gross_margin_pct) {
-      const margin = formData.gross_margin_pct / 100;
-      const listPrice = formData.base_cost / (1 - margin);
-      setFormData(prev => ({ ...prev, base_list_price: listPrice }));
-    }
-  };
 
   return (
     <AppLayout>
@@ -96,98 +102,89 @@ export default function ProductNew() {
             {/* Basic Info */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="space-y-2">
-                <Label htmlFor="product_id">Codice Prodotto *</Label>
+                <Label htmlFor="model">Modello Prodotto *</Label>
                 <Input
-                  id="product_id"
-                  value={formData.product_id || ''}
-                  onChange={(e) => handleInputChange('product_id', e.target.value)}
+                  id="model"
+                  value={formData.model}
+                  onChange={(e) => handleInputChange('model', e.target.value)}
                   className="input-business"
                   placeholder="G-1234"
                 />
               </div>
               
               <div className="space-y-2">
-                <Label htmlFor="product_type">Tipo Prodotto *</Label>
-                <Select 
-                  value={formData.product_type} 
-                  onValueChange={(value: ProductType) => handleInputChange('product_type', value)}
-                >
-                  <SelectTrigger className="input-business">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="impeller">Girante</SelectItem>
-                    <SelectItem value="bushing">Bussola</SelectItem>
-                    <SelectItem value="kit">Kit</SelectItem>
-                    <SelectItem value="generic">Generico</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="space-y-2">
-                <Label htmlFor="name">Nome Prodotto *</Label>
+                <Label htmlFor="material_type">Tipo Materiale</Label>
                 <Input
-                  id="name"
-                  value={formData.name || ''}
-                  onChange={(e) => handleInputChange('name', e.target.value)}
+                  id="material_type"
+                  value={formData.material_type}
+                  onChange={(e) => handleInputChange('material_type', e.target.value)}
                   className="input-business"
-                  placeholder="Girante Standard 85mm"
-                />
-              </div>
-              
-              <div className="space-y-2">
-                <Label htmlFor="internal_code">Codice Interno</Label>
-                <Input
-                  id="internal_code"
-                  value={formData.internal_code || ''}
-                  onChange={(e) => handleInputChange('internal_code', e.target.value)}
-                  className="input-business"
-                  placeholder="GS-085-NBR"
+                  placeholder="Bronze, Stainless Steel, ecc."
                 />
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="space-y-2">
-                <Label htmlFor="uom">Unità di Misura *</Label>
-                <Select 
-                  value={formData.uom} 
-                  onValueChange={(value: UnitOfMeasure) => handleInputChange('uom', value)}
-                >
-                  <SelectTrigger className="input-business">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="pcs">Pezzi (pcs)</SelectItem>
-                    <SelectItem value="set">Set</SelectItem>
-                    <SelectItem value="kg">Chilogrammi (kg)</SelectItem>
-                    <SelectItem value="m">Metri (m)</SelectItem>
-                    <SelectItem value="other">Altro</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              
-              <div className="space-y-2">
-                <Label htmlFor="drawing_link_url">Link Disegno</Label>
-                <Input
-                  id="drawing_link_url"
-                  type="url"
-                  value={formData.drawing_link_url || ''}
-                  onChange={(e) => handleInputChange('drawing_link_url', e.target.value)}
-                  className="input-business"
-                  placeholder="https://..."
-                />
+            <div className="space-y-2">
+              <Label htmlFor="description">Descrizione</Label>
+              <Textarea
+                id="description"
+                value={formData.description}
+                onChange={(e) => handleInputChange('description', e.target.value)}
+                className="input-business"
+                placeholder="Descrizione del prodotto..."
+              />
+            </div>
+
+            {/* Specifications */}
+            <div className="border-t pt-6">
+              <h3 className="text-lg font-semibold mb-4">Specifiche Tecniche</h3>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="space-y-2">
+                  <Label htmlFor="diameter">Diametro (mm)</Label>
+                  <Input
+                    id="diameter"
+                    type="number"
+                    step="0.1"
+                    value={formData.diameter || ''}
+                    onChange={(e) => handleInputChange('diameter', parseFloat(e.target.value) || 0)}
+                    className="input-business"
+                    placeholder="85"
+                  />
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="pitch">Passo (mm)</Label>
+                  <Input
+                    id="pitch"
+                    type="number"
+                    step="0.1"
+                    value={formData.pitch || ''}
+                    onChange={(e) => handleInputChange('pitch', parseFloat(e.target.value) || 0)}
+                    className="input-business"
+                    placeholder="75"
+                  />
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="blades">Numero Pale</Label>
+                  <Input
+                    id="blades"
+                    type="number"
+                    value={formData.blades || ''}
+                    onChange={(e) => handleInputChange('blades', parseInt(e.target.value) || 3)}
+                    className="input-business"
+                    placeholder="3"
+                  />
+                </div>
               </div>
             </div>
 
             {/* Pricing */}
             <div className="border-t pt-6">
               <h3 className="text-lg font-semibold mb-4">Pricing</h3>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-2">
-                  <Label htmlFor="base_cost">Costo Base (€) *</Label>
+                  <Label htmlFor="base_cost">Costo Base (€)</Label>
                   <Input
                     id="base_cost"
                     type="number"
@@ -200,129 +197,24 @@ export default function ProductNew() {
                 </div>
                 
                 <div className="space-y-2">
-                  <Label htmlFor="gross_margin_pct">Margine Lordo (%)</Label>
-                  <div className="flex gap-2">
-                    <Input
-                      id="gross_margin_pct"
-                      type="number"
-                      step="0.1"
-                      value={formData.gross_margin_pct || ''}
-                      onChange={(e) => handleInputChange('gross_margin_pct', parseFloat(e.target.value) || 0)}
-                      className="input-business"
-                      placeholder="35"
-                    />
-                    <Button 
-                      type="button" 
-                      size="sm" 
-                      variant="outline"
-                      onClick={calculateListPrice}
-                    >
-                      Calcola
-                    </Button>
-                  </div>
-                </div>
-                
-                <div className="space-y-2">
-                  <Label htmlFor="base_list_price">Prezzo Lista Base (€)</Label>
-                  <Input
-                    id="base_list_price"
-                    type="number"
-                    step="0.01"
-                    value={formData.base_list_price || ''}
-                    onChange={(e) => handleInputChange('base_list_price', parseFloat(e.target.value) || 0)}
-                    className="input-business"
-                  />
+                  <Label htmlFor="status">Stato</Label>
+                  <Select 
+                    value={formData.status} 
+                    onValueChange={(value) => handleInputChange('status', value)}
+                  >
+                    <SelectTrigger className="input-business">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="active">Attivo</SelectItem>
+                      <SelectItem value="inactive">Inattivo</SelectItem>
+                      <SelectItem value="discontinued">Dismesso</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
             </div>
 
-            {/* Components Section */}
-            {(formData.product_type === 'impeller' || formData.product_type === 'kit') && (
-              <div className="border-t pt-6">
-                <h3 className="text-lg font-semibold mb-4">Componenti</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="space-y-2">
-                    <Label htmlFor="rubber_mix">Mescola Gomma</Label>
-                    <Select>
-                      <SelectTrigger className="input-business">
-                        <SelectValue placeholder="Seleziona mescola" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="NBR-85">NBR-85 (Nero Standard)</SelectItem>
-                        <SelectItem value="EPDM-70">EPDM-70 (Bianco Marine)</SelectItem>
-                        <SelectItem value="CR-75">CR-75 (Nero Resistente)</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <Label htmlFor="bushing_code">Codice Bussola</Label>
-                    <Select>
-                      <SelectTrigger className="input-business">
-                        <SelectValue placeholder="Seleziona bussola" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="BO-012">BO-012 (Ottone 12mm)</SelectItem>
-                        <SelectItem value="BO-015">BO-015 (Ottone 15mm)</SelectItem>
-                        <SelectItem value="BP-012">BP-012 (Plastica 12mm)</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-                
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="rubber_volume">Volume Gomma (cm³) *</Label>
-                    <Input
-                      id="rubber_volume"
-                      type="number"
-                      step="0.1"
-                      placeholder="45.5"
-                      className="input-business"
-                    />
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <Label htmlFor="blade_count">Numero Pale</Label>
-                    <Input
-                      id="blade_count"
-                      type="number"
-                      placeholder="6"
-                      className="input-business"
-                    />
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <Label htmlFor="shaft_profile">Profilo Albero</Label>
-                    <Select>
-                      <SelectTrigger className="input-business">
-                        <SelectValue placeholder="Tipo profilo" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="round">Tondo</SelectItem>
-                        <SelectItem value="d-shaft">D-Shaft</SelectItem>
-                        <SelectItem value="spline">Scanalato</SelectItem>
-                        <SelectItem value="cone">Conico</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Notes */}
-            <div className="border-t pt-6">
-              <div className="space-y-2">
-                <Label htmlFor="notes">Note</Label>
-                <Textarea
-                  id="notes"
-                  value={formData.notes || ''}
-                  onChange={(e) => handleInputChange('notes', e.target.value)}
-                  className="input-business min-h-[100px]"
-                  placeholder="Note aggiuntive sul prodotto..."
-                />
-              </div>
-            </div>
           </CardContent>
         </Card>
       </div>

@@ -10,7 +10,7 @@ import {
   ExternalLink,
   Plus
 } from 'lucide-react';
-import { Product, ProductType } from '@/types';
+import { ProductType } from '@/types';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table-view';
 import { useNavigate } from 'react-router-dom';
 import { PageHeader } from '@/components/ui/page-header';
@@ -19,50 +19,23 @@ import { SearchFilterCard } from '@/components/ui/search-filter-card';
 import { StatusFilterButtons } from '@/components/ui/status-filter-buttons';
 import { ActionButtonGroup, ActionButton } from '@/components/ui/action-button-group';
 import { EmptyStateCard } from '@/components/ui/empty-state-card';
+import { useProducts } from '@/hooks/useProducts';
+import { Skeleton } from '@/components/ui/skeleton';
 
-// Mock data for demonstration
-const mockProducts: Product[] = [
-  {
-    product_id: 'G-2847',
-    product_type: 'impeller',
-    name: 'Girante Standard 85mm',
-    internal_code: 'GS-085-NBR',
-    uom: 'pcs',
-    base_cost: 45.80,
-    gross_margin_pct: 35,
-    base_list_price: 70.46,
-    drawing_link_url: 'https://drawings.company.com/G-2847.pdf',
-    notes: 'Girante standard per pompe centrifughe marine',
-    created_at: '2024-01-15T10:30:00Z',
-    updated_at: '2024-01-20T14:22:00Z'
-  },
-  {
-    product_id: 'B-1523',
-    product_type: 'bushing',
-    name: 'Bussola Ottone 12mm',
-    internal_code: 'BO-012',
-    uom: 'pcs',
-    base_cost: 8.50,
-    gross_margin_pct: 40,
-    base_list_price: 14.17,
-    notes: 'Bussola in ottone per alberi 12mm',
-    created_at: '2024-01-10T09:15:00Z',
-    updated_at: '2024-01-18T11:45:00Z'
-  },
-  {
-    product_id: 'K-0934',
-    product_type: 'kit',
-    name: 'Kit Completo Pompa 75mm',
-    internal_code: 'KC-075',
-    uom: 'set',
-    base_cost: 125.30,
-    gross_margin_pct: 30,
-    base_list_price: 179.00,
-    notes: 'Kit completo con girante, bussola e guarnizioni',
-    created_at: '2024-01-08T16:20:00Z',
-    updated_at: '2024-01-22T08:30:00Z'
+// Product type mapping for database values
+const getProductType = (materialType?: string): ProductType => {
+  // Simple mapping - can be enhanced based on actual data
+  if (materialType?.toLowerCase().includes('impeller') || materialType?.toLowerCase().includes('girante')) {
+    return 'impeller';
   }
-];
+  if (materialType?.toLowerCase().includes('bushing') || materialType?.toLowerCase().includes('bussola')) {
+    return 'bushing';
+  }
+  if (materialType?.toLowerCase().includes('kit')) {
+    return 'kit';
+  }
+  return 'impeller'; // Default to impeller for propellers
+};
 
 const getProductTypeColor = (type: ProductType) => {
   switch (type) {
@@ -93,6 +66,7 @@ const getProductTypeLabel = (type: ProductType) => {
 export default function Products() {
   const navigate = useNavigate();
   const { registerShortcut, unregisterShortcut } = useKeyboardShortcutsContext();
+  const { products, loading, error } = useProducts();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedType, setSelectedType] = useState<ProductType | 'all'>('all');
   const [viewMode, setViewMode] = useState<'cards' | 'table'>('cards');
@@ -104,12 +78,13 @@ export default function Products() {
     { value: 'kit', label: 'Kit' }
   ];
 
-  const filteredProducts = mockProducts.filter(product => {
-    const matchesSearch = product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         product.product_id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         (product.internal_code?.toLowerCase().includes(searchTerm.toLowerCase()) ?? false);
+  const filteredProducts = products.filter(product => {
+    const productType = getProductType(product.material_type);
+    const matchesSearch = product.model.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         product.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         (product.description?.toLowerCase().includes(searchTerm.toLowerCase()) ?? false);
     
-    const matchesType = selectedType === 'all' || product.product_type === selectedType;
+    const matchesType = selectedType === 'all' || productType === selectedType;
     
     return matchesSearch && matchesType;
   });
@@ -195,92 +170,110 @@ export default function Products() {
         </SearchFilterCard>
 
         {/* Products Display */}
-        {viewMode === 'cards' ? (
+        {loading ? (
           <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
-            {filteredProducts.map((product) => (
-              <Card key={product.product_id} className="card-interactive">
+            {[...Array(6)].map((_, i) => (
+              <Card key={i} className="card-interactive animate-fade-in">
                 <CardHeader>
-                  <div className="flex items-start justify-between">
-                    <div className="space-y-1">
-                      <CardTitle className="text-lg">{product.name}</CardTitle>
-                      <div className="flex items-center gap-2">
-                        <Badge 
-                          className={getProductTypeColor(product.product_type)}
-                        >
-                          {getProductTypeLabel(product.product_type)}
-                        </Badge>
-                        <span className="text-sm font-mono text-muted-foreground">
-                          {product.product_id}
-                        </span>
-                      </div>
-                    </div>
-                    <Ship className="h-5 w-5 text-muted-foreground" />
+                  <Skeleton className="h-6 w-3/4" />
+                  <div className="flex gap-2 mt-2">
+                    <Skeleton className="h-5 w-16" />
+                    <Skeleton className="h-5 w-20" />
                   </div>
                 </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4 text-sm">
-                    <div>
-                      <p className="text-muted-foreground">Costo Industriale</p>
-                      <p className="font-semibold">€{product.base_cost.toFixed(2)}</p>
-                    </div>
-                    <div>
-                      <p className="text-muted-foreground">Prezzo Lista</p>
-                      <p className="font-semibold">€{product.base_list_price?.toFixed(2) || 'N/D'}</p>
-                    </div>
-                    <div>
-                      <p className="text-muted-foreground">Margine</p>
-                      <p className="font-semibold">{product.gross_margin_pct}%</p>
-                    </div>
-                    <div>
-                      <p className="text-muted-foreground">UdM</p>
-                      <p className="font-semibold uppercase">{product.uom}</p>
-                    </div>
-                  </div>
-
-                  {product.internal_code && (
-                    <div className="text-sm">
-                      <p className="text-muted-foreground">Codice Interno</p>
-                      <p className="font-mono">{product.internal_code}</p>
-                    </div>
-                  )}
-
-                  {product.notes && (
-                    <div className="text-sm">
-                      <p className="text-muted-foreground">Note</p>
-                      <p className="text-xs leading-relaxed">{product.notes}</p>
-                    </div>
-                  )}
-
-                  <div className="flex justify-between items-center pt-4 border-t border-border">
-                    <ActionButtonGroup
-                      actions={[
-                        {
-                          icon: Eye,
-                          label: 'Dettagli',
-                          onClick: () => navigate(`/products/${product.product_id}`),
-                          variant: 'outline'
-                        },
-                        {
-                          icon: Edit,
-                          label: 'Modifica',
-                          onClick: () => navigate(`/products/${product.product_id}/edit`),
-                          variant: 'outline'
-                        },
-                        ...(product.drawing_link_url ? [{
-                          icon: ExternalLink,
-                          label: '',
-                          onClick: () => window.open(product.drawing_link_url, '_blank'),
-                          variant: 'ghost' as const
-                        }] : [])
-                      ]}
-                    />
+                <CardContent>
+                  <div className="space-y-3">
+                    <Skeleton className="h-16 w-full" />
+                    <Skeleton className="h-4 w-2/3" />
+                    <Skeleton className="h-8 w-full" />
                   </div>
                 </CardContent>
               </Card>
             ))}
           </div>
+        ) : viewMode === 'cards' ? (
+          <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+            {filteredProducts.map((product) => {
+              const productType = getProductType(product.material_type);
+              return (
+                <Card key={product.id} className="card-interactive animate-fade-in">
+                  <CardHeader>
+                    <div className="flex items-start justify-between">
+                      <div className="space-y-1">
+                        <CardTitle className="text-lg">{product.model}</CardTitle>
+                        <div className="flex items-center gap-2">
+                          <Badge 
+                            className={getProductTypeColor(productType)}
+                          >
+                            {getProductTypeLabel(productType)}
+                          </Badge>
+                          <span className="text-sm font-mono text-muted-foreground">
+                            {product.id.slice(0, 8)}...
+                          </span>
+                        </div>
+                      </div>
+                      <Ship className="h-5 w-5 text-muted-foreground" />
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="grid grid-cols-2 gap-4 text-sm">
+                      <div>
+                        <p className="text-muted-foreground">Costo Industriale</p>
+                        <p className="font-semibold">€{(product.base_cost || 0).toFixed(2)}</p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground">Diametro</p>
+                        <p className="font-semibold">{product.diameter ? `${product.diameter}mm` : 'N/D'}</p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground">Passo</p>
+                        <p className="font-semibold">{product.pitch ? `${product.pitch}mm` : 'N/D'}</p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground">Pale</p>
+                        <p className="font-semibold">{product.blades || 'N/D'}</p>
+                      </div>
+                    </div>
+
+                    {product.material_type && (
+                      <div className="text-sm">
+                        <p className="text-muted-foreground">Materiale</p>
+                        <p className="font-mono">{product.material_type}</p>
+                      </div>
+                    )}
+
+                    {product.description && (
+                      <div className="text-sm">
+                        <p className="text-muted-foreground">Descrizione</p>
+                        <p className="text-xs leading-relaxed">{product.description}</p>
+                      </div>
+                    )}
+
+                    <div className="flex justify-between items-center pt-4 border-t border-border">
+                      <ActionButtonGroup
+                        actions={[
+                          {
+                            icon: Eye,
+                            label: 'Dettagli',
+                            onClick: () => navigate(`/products/${product.id}`),
+                            variant: 'outline'
+                          },
+                          {
+                            icon: Edit,
+                            label: 'Modifica',
+                            onClick: () => navigate(`/products/${product.id}/edit`),
+                            variant: 'outline'
+                          }
+                        ]}
+                      />
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
         ) : (
-          <Card className="card-elevated">
+          <Card className="card-elevated animate-fade-in">
             <CardContent className="p-0">
               <Table>
                 <TableHeader>
@@ -288,72 +281,69 @@ export default function Products() {
                     <TableHead>Prodotto</TableHead>
                     <TableHead>Tipo</TableHead>
                     <TableHead>Codice</TableHead>
-                    <TableHead className="text-right">Costo Industriale</TableHead>
-                    <TableHead className="text-right">Prezzo</TableHead>
-                    <TableHead className="text-right">Margine</TableHead>
-                    <TableHead>UdM</TableHead>
+                    <TableHead className="text-right">Costo</TableHead>
+                    <TableHead className="text-right">Diametro</TableHead>
+                    <TableHead className="text-right">Passo</TableHead>
+                    <TableHead>Pale</TableHead>
                     <TableHead className="text-right">Azioni</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredProducts.map((product) => (
-                    <TableRow key={product.product_id}>
-                      <TableCell>
-                        <div>
-                          <div className="font-medium">{product.name}</div>
-                          {product.internal_code && (
-                            <div className="text-sm text-muted-foreground font-mono">
-                              {product.internal_code}
-                            </div>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <Badge className={getProductTypeColor(product.product_type)}>
-                          {getProductTypeLabel(product.product_type)}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="font-mono text-sm">
-                        {product.product_id}
-                      </TableCell>
-                      <TableCell className="text-right font-semibold">
-                        €{product.base_cost.toFixed(2)}
-                      </TableCell>
-                      <TableCell className="text-right font-semibold">
-                        €{product.base_list_price?.toFixed(2) || 'N/D'}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {product.gross_margin_pct}%
-                      </TableCell>
-                      <TableCell className="uppercase">
-                        {product.uom}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <ActionButtonGroup
-                          actions={[
-                            {
-                              icon: Eye,
-                              label: 'Dettagli',
-                              onClick: () => navigate(`/products/${product.product_id}`),
-                              variant: 'outline'
-                            },
-                            {
-                              icon: Edit,
-                              label: 'Modifica',
-                              onClick: () => navigate(`/products/${product.product_id}/edit`),
-                              variant: 'outline'
-                            },
-                            ...(product.drawing_link_url ? [{
-                              icon: ExternalLink,
-                              label: '',
-                              onClick: () => window.open(product.drawing_link_url, '_blank'),
-                              variant: 'ghost' as const
-                            }] : [])
-                          ]}
-                        />
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                  {filteredProducts.map((product) => {
+                    const productType = getProductType(product.material_type);
+                    return (
+                      <TableRow key={product.id} className="animate-fade-in">
+                        <TableCell>
+                          <div>
+                            <div className="font-medium">{product.model}</div>
+                            {product.description && (
+                              <div className="text-sm text-muted-foreground">
+                                {product.description.substring(0, 50)}...
+                              </div>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <Badge className={getProductTypeColor(productType)}>
+                            {getProductTypeLabel(productType)}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="font-mono text-sm">
+                          {product.id.slice(0, 8)}...
+                        </TableCell>
+                        <TableCell className="text-right font-semibold">
+                          €{(product.base_cost || 0).toFixed(2)}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          {product.diameter ? `${product.diameter}mm` : 'N/D'}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          {product.pitch ? `${product.pitch}mm` : 'N/D'}
+                        </TableCell>
+                        <TableCell>
+                          {product.blades || 'N/D'}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <ActionButtonGroup
+                            actions={[
+                              {
+                                icon: Eye,
+                                label: 'Dettagli',
+                                onClick: () => navigate(`/products/${product.id}`),
+                                variant: 'outline'
+                              },
+                              {
+                                icon: Edit,
+                                label: 'Modifica',
+                                onClick: () => navigate(`/products/${product.id}/edit`),
+                                variant: 'outline'
+                              }
+                            ]}
+                          />
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
                 </TableBody>
               </Table>
             </CardContent>
