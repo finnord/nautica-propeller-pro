@@ -215,6 +215,42 @@ export type Database = {
           },
         ]
       }
+      customers: {
+        Row: {
+          annual_revenue_eur: number | null
+          contacts: Json | null
+          created_at: string
+          id: string
+          name: string
+          notes: string | null
+          updated_at: string
+          vat_number: string | null
+          website: string | null
+        }
+        Insert: {
+          annual_revenue_eur?: number | null
+          contacts?: Json | null
+          created_at?: string
+          id?: string
+          name: string
+          notes?: string | null
+          updated_at?: string
+          vat_number?: string | null
+          website?: string | null
+        }
+        Update: {
+          annual_revenue_eur?: number | null
+          contacts?: Json | null
+          created_at?: string
+          id?: string
+          name?: string
+          notes?: string | null
+          updated_at?: string
+          vat_number?: string | null
+          website?: string | null
+        }
+        Relationships: []
+      }
       drawings: {
         Row: {
           created_at: string | null
@@ -297,6 +333,107 @@ export type Database = {
           },
         ]
       }
+      price_list_items: {
+        Row: {
+          created_at: string
+          id: string
+          margin_euro: number | null
+          margin_percent: number | null
+          min_quantity: number | null
+          notes: string | null
+          price_list_id: string
+          pricing_method: string
+          propeller_id: string
+          unit_price: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          margin_euro?: number | null
+          margin_percent?: number | null
+          min_quantity?: number | null
+          notes?: string | null
+          price_list_id: string
+          pricing_method?: string
+          propeller_id: string
+          unit_price: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          margin_euro?: number | null
+          margin_percent?: number | null
+          min_quantity?: number | null
+          notes?: string | null
+          price_list_id?: string
+          pricing_method?: string
+          propeller_id?: string
+          unit_price?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "price_list_items_price_list_id_fkey"
+            columns: ["price_list_id"]
+            isOneToOne: false
+            referencedRelation: "price_lists"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "price_list_items_propeller_id_fkey"
+            columns: ["propeller_id"]
+            isOneToOne: false
+            referencedRelation: "propellers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      price_lists: {
+        Row: {
+          created_at: string
+          currency: string
+          customer_id: string
+          id: string
+          list_name: string
+          notes: string | null
+          updated_at: string
+          valid_from: string
+          valid_to: string | null
+        }
+        Insert: {
+          created_at?: string
+          currency?: string
+          customer_id: string
+          id?: string
+          list_name: string
+          notes?: string | null
+          updated_at?: string
+          valid_from?: string
+          valid_to?: string | null
+        }
+        Update: {
+          created_at?: string
+          currency?: string
+          customer_id?: string
+          id?: string
+          list_name?: string
+          notes?: string | null
+          updated_at?: string
+          valid_from?: string
+          valid_to?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "price_lists_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       propellers: {
         Row: {
           blades: number | null
@@ -335,6 +472,110 @@ export type Database = {
           updated_at?: string | null
         }
         Relationships: []
+      }
+      rfq: {
+        Row: {
+          created_at: string
+          customer_id: string
+          expiry_date: string | null
+          id: string
+          notes: string | null
+          rfq_date: string
+          rfq_number: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          customer_id: string
+          expiry_date?: string | null
+          id?: string
+          notes?: string | null
+          rfq_date?: string
+          rfq_number: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          customer_id?: string
+          expiry_date?: string | null
+          id?: string
+          notes?: string | null
+          rfq_date?: string
+          rfq_number?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "rfq_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      rfq_lines: {
+        Row: {
+          created_at: string
+          external_code: string | null
+          id: string
+          line_number: number
+          notes: string | null
+          propeller_id: string | null
+          quantity: number
+          quoted_at: string | null
+          quoted_price: number | null
+          rfq_id: string
+          target_price: number | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          external_code?: string | null
+          id?: string
+          line_number: number
+          notes?: string | null
+          propeller_id?: string | null
+          quantity: number
+          quoted_at?: string | null
+          quoted_price?: number | null
+          rfq_id: string
+          target_price?: number | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          external_code?: string | null
+          id?: string
+          line_number?: number
+          notes?: string | null
+          propeller_id?: string | null
+          quantity?: number
+          quoted_at?: string | null
+          quoted_price?: number | null
+          rfq_id?: string
+          target_price?: number | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "rfq_lines_propeller_id_fkey"
+            columns: ["propeller_id"]
+            isOneToOne: false
+            referencedRelation: "propellers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "rfq_lines_rfq_id_fkey"
+            columns: ["rfq_id"]
+            isOneToOne: false
+            referencedRelation: "rfq"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Views: {

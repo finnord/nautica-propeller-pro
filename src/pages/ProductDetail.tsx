@@ -14,6 +14,8 @@ import {
   ArrowLeftRight
 } from 'lucide-react';
 import { Product, ProductType } from '@/types';
+import { ProductPriceListsTab } from '@/components/product/ProductPriceListsTab';
+import { ProductRFQTab } from '@/components/product/ProductRFQTab';
 
 // Mock product data (in real app, this would come from Supabase)
 const mockProduct: Product = {
@@ -277,18 +279,7 @@ export default function ProductDetail() {
           </TabsContent>
 
           <TabsContent value="pricing">
-            <Card className="card-elevated">
-              <CardContent className="text-center py-12">
-                <FileText className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                <h3 className="text-lg font-semibold mb-2">Listini prezzi</h3>
-                <p className="text-muted-foreground mb-4">
-                  Visualizza i listini prezzi per questo prodotto per cliente.
-                </p>
-                <Button variant="outline">
-                  Gestisci Listini
-                </Button>
-              </CardContent>
-            </Card>
+            <ProductPriceListsTab productId={product.product_id} />
           </TabsContent>
 
           <TabsContent value="equivalences">
@@ -307,18 +298,7 @@ export default function ProductDetail() {
           </TabsContent>
 
           <TabsContent value="rfq">
-            <Card className="card-elevated">
-              <CardContent className="text-center py-12">
-                <FileText className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                <h3 className="text-lg font-semibold mb-2">RFQ</h3>
-                <p className="text-muted-foreground mb-4">
-                  Visualizza le RFQ che includono questo prodotto.
-                </p>
-                <Button variant="outline">
-                  Visualizza RFQ
-                </Button>
-              </CardContent>
-            </Card>
+            <ProductRFQTab productId={product.product_id} />
           </TabsContent>
         </Tabs>
       </div>
