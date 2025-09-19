@@ -57,107 +57,128 @@ export function usePriceListImportUpsert() {
         if (p.internal_code) productMap.set(p.internal_code.toLowerCase(), p);
       });
 
+      // Group rows by customer/price list for atomic operations
+      const groups = new Map<string, { customerId?: string; priceListId?: string; rows: Array<{ row: PriceListImportRow; rowNumber: number }> }>();
+      
       for (let i = 0; i < data.length; i++) {
         const row = data[i];
         const rowNumber = i + 2;
+        const customerName = row.customer_name || 'Cliente Generico';
+        const listName = row.list_name || 'Listino Standard';
+        const groupKey = `${customerName.toLowerCase()}_${listName.toLowerCase()}`;
+        
+        if (!groups.has(groupKey)) {
+          groups.set(groupKey, { rows: [] });
+        }
+        groups.get(groupKey)!.rows.push({ row, rowNumber });
+      }
 
+      // Process each group atomically
+      for (const [groupKey, group] of groups.entries()) {
         try {
-          // Skip if critical data missing
-          if (!row.product_code && !row.product_name) {
-            result.skipped++;
-            result.log.push({
-              timestamp: new Date().toISOString(),
-              operation: 'skip',
-              recordKey: `row_${rowNumber}`,
-              rowNumber
-            });
-            continue;
-          }
-
-          // Normalize data
-          const customerName = row.customer_name || 'Cliente Generico';
-          const listName = row.list_name || 'Listino Standard';
-          const currency = row.currency || 'EUR';
-          
-          // Find or create customer
-          let customerId = customerMap.get(customerName.toLowerCase())?.id;
-          if (!customerId) {
-            if (mode === 'update') {
-              result.skipped++;
-              continue;
-            }
-
-            const { data: newCustomer, error: customerError } = await supabase
-              .from('customers')
-              .insert({
-                name: customerName,
-                vat_number: row.customer_code || null
-              })
-              .select('id')
-              .single();
-
-            if (customerError) {
-              result.errors.push(`Riga ${rowNumber}: Errore creazione cliente - ${customerError.message}`);
-              continue;
-            }
-
-            customerId = newCustomer.id;
-            customerMap.set(customerName.toLowerCase(), { id: customerId, name: customerName, vat_number: row.customer_code });
+          // Setup group variables from first row if not already done
+          if (!group.customerId || !group.priceListId) {
+            const firstRow = group.rows[0];
+            const customerName = firstRow.row.customer_name || 'Cliente Generico';
+            const listName = firstRow.row.list_name || 'Listino Standard';
+            const currency = firstRow.row.currency || 'EUR';
             
-            result.log.push({
-              timestamp: new Date().toISOString(),
-              operation: 'create_customer',
-              recordKey: customerName,
-              newValue: { name: customerName, vat_number: row.customer_code },
-              rowNumber
-            });
-          }
+            // Find or create customer
+            let customerId = customerMap.get(customerName.toLowerCase())?.id;
+            if (!customerId) {
+              if (mode === 'update') {
+                // Skip entire group
+                result.skipped += group.rows.length;
+                continue;
+              }
 
-          // Find or create price list
-          const priceListKey = `${customerName.toLowerCase()}_${listName.toLowerCase()}`;
-          let priceListId = priceListMap.get(priceListKey)?.id;
-          
-          if (!priceListId) {
-            if (mode === 'update') {
-              result.skipped++;
-              continue;
+              const { data: newCustomer, error: customerError } = await supabase
+                .from('customers')
+                .insert({
+                  name: customerName,
+                  vat_number: firstRow.row.customer_code || null
+                })
+                .select('id')
+                .single();
+
+              if (customerError) {
+                result.errors.push(`Gruppo ${groupKey}: Errore creazione cliente - ${customerError.message}`);
+                result.skipped += group.rows.length;
+                continue;
+              }
+
+              customerId = newCustomer.id;
+              customerMap.set(customerName.toLowerCase(), { id: customerId, name: customerName, vat_number: firstRow.row.customer_code });
             }
 
-            const { data: newPriceList, error: priceListError } = await supabase
-              .from('price_lists')
-              .insert({
-                customer_id: customerId,
-                list_name: listName,
-                currency,
-                valid_from: row.valid_from || new Date().toISOString().split('T')[0],
-                valid_to: row.valid_to || null
-              })
-              .select('id')
-              .single();
-
-            if (priceListError) {
-              result.errors.push(`Riga ${rowNumber}: Errore creazione listino - ${priceListError.message}`);
-              continue;
-            }
-
-            priceListId = newPriceList.id;
-            priceListMap.set(priceListKey, { id: priceListId, customer_id: customerId, list_name: listName, currency, customers: { name: customerName } });
+            // Find or create price list
+            const priceListKey = `${customerName.toLowerCase()}_${listName.toLowerCase()}`;
+            let priceListId = priceListMap.get(priceListKey)?.id;
             
-            result.log.push({
-              timestamp: new Date().toISOString(),
-              operation: 'create_price_list',
-              recordKey: priceListKey,
-              newValue: { list_name: listName, currency },
-              rowNumber
-            });
-          }
+            if (!priceListId) {
+              if (mode === 'update') {
+                result.skipped += group.rows.length;
+                continue;
+              }
 
-          // Find product
-          const productKey = row.product_code?.toLowerCase() || row.product_name?.toLowerCase();
-          const product = productMap.get(productKey);
+              const { data: newPriceList, error: priceListError } = await supabase
+                .from('price_lists')
+                .insert({
+                  customer_id: customerId,
+                  list_name: listName,
+                  currency,
+                  valid_from: firstRow.row.valid_from || new Date().toISOString().split('T')[0],
+                  valid_to: firstRow.row.valid_to || null
+                })
+                .select('id')
+                .single();
+
+              if (priceListError) {
+                result.errors.push(`Gruppo ${groupKey}: Errore creazione listino - ${priceListError.message}`);
+                result.skipped += group.rows.length;
+                continue;
+              }
+
+              priceListId = newPriceList.id;
+              priceListMap.set(priceListKey, { id: priceListId, customer_id: customerId, list_name: listName, currency, customers: { name: customerName } });
+            }
+            
+            group.customerId = customerId;
+            group.priceListId = priceListId;
+          }
+          
+          // Process each row in the group
+          for (const { row, rowNumber } of group.rows) {
+            // Skip if critical data missing
+            if (!row.product_code && !row.product_name) {
+              result.skipped++;
+              result.log.push({
+                timestamp: new Date().toISOString(),
+                operation: 'skip',
+                recordKey: `row_${rowNumber}`,
+                rowNumber
+              });
+              continue;
+            }
+
+          // Find product - normalize and try multiple lookups
+          const productCode = (row.product_code || row.product_name || '').trim().toLowerCase();
+          let product = productMap.get(productCode);
+          
+          // Try additional normalization if not found
+          if (!product && productCode) {
+            // Remove special characters and try again
+            const normalizedCode = productCode.replace(/[^a-z0-9]/g, '');
+            for (const [key, value] of productMap.entries()) {
+              if (key.replace(/[^a-z0-9]/g, '') === normalizedCode) {
+                product = value;
+                break;
+              }
+            }
+          }
           
           if (!product) {
-            result.errors.push(`Riga ${rowNumber}: Prodotto non trovato - ${row.product_code || row.product_name}`);
+            result.errors.push(`Riga ${rowNumber}: Prodotto non trovato - ${row.product_code || row.product_name} (cercato: ${productCode})`);
             continue;
           }
 
@@ -173,13 +194,13 @@ export function usePriceListImportUpsert() {
           const { data: existingItem } = await supabase
             .from('price_list_items')
             .select('id, unit_price')
-            .eq('price_list_id', priceListId)
+            .eq('price_list_id', group.priceListId!)
             .eq('propeller_id', product.id)
-            .single();
+            .maybeSingle();
 
           if (existingItem) {
             // Handle conflict resolution
-            const conflictKey = `price_${i}`;
+            const conflictKey = `price_${rowNumber}`;
             const resolution = conflictResolutions[conflictKey] || 'use_new';
             
             if (resolution === 'skip_record') {
@@ -192,7 +213,7 @@ export function usePriceListImportUpsert() {
               result.log.push({
                 timestamp: new Date().toISOString(),
                 operation: 'skip',
-                recordKey: `${priceListKey}_${product.id}`,
+                recordKey: `${groupKey}_${product.id}`,
                 oldValue: existingItem.unit_price,
                 rowNumber
               });
@@ -225,7 +246,7 @@ export function usePriceListImportUpsert() {
             result.log.push({
               timestamp: new Date().toISOString(),
               operation: 'update_item',
-              recordKey: `${priceListKey}_${product.id}`,
+              recordKey: `${groupKey}_${product.id}`,
               oldValue: existingItem.unit_price,
               newValue: unitPrice,
               rowNumber
@@ -236,7 +257,7 @@ export function usePriceListImportUpsert() {
             const { error: insertError } = await supabase
               .from('price_list_items')
               .insert({
-                price_list_id: priceListId,
+                price_list_id: group.priceListId!,
                 propeller_id: product.id,
                 unit_price: unitPrice,
                 margin_percent: row.margin_percent,
@@ -255,14 +276,16 @@ export function usePriceListImportUpsert() {
             result.log.push({
               timestamp: new Date().toISOString(),
               operation: 'create_item',
-              recordKey: `${priceListKey}_${product.id}`,
+              recordKey: `${groupKey}_${product.id}`,
               newValue: unitPrice,
               rowNumber
             });
+           }
           }
-
+           
         } catch (error) {
-          result.errors.push(`Riga ${rowNumber}: ${error instanceof Error ? error.message : 'Errore sconosciuto'}`);
+          result.errors.push(`Gruppo ${groupKey}: ${error instanceof Error ? error.message : 'Errore sconosciuto'}`);
+          result.skipped += group.rows.length;
         }
       }
 

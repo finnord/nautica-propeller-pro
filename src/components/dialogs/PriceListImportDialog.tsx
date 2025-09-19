@@ -7,26 +7,13 @@ import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Progress } from '@/components/ui/progress';
 import { useToast } from '@/hooks/use-toast';
-import { supabase } from '@/integrations/supabase/client';
 import { downloadPriceListTemplate } from '@/lib/excel-utils';
 import { Upload, FileText, AlertTriangle, CheckCircle } from 'lucide-react';
+import { usePriceListImportValidation, type PriceListImportRow } from '@/hooks/usePriceListImportValidation';
+import { usePriceListImportUpsert } from '@/hooks/usePriceListImportUpsert';
 import * as XLSX from 'xlsx';
 
-interface ImportRow {
-  product_code: string;
-  customer_name: string;
-  list_name: string;
-  list_version: string;
-  list_identifier: string;
-  unit_price: number;
-  rowIndex: number;
-  errors: string[];
-  productFound?: boolean;
-  productId?: string;
-  baseCost?: number;
-  marginPercent?: number;
-  marginEuro?: number;
-}
+// Use PriceListImportRow from validation hook instead
 
 interface PriceListImportDialogProps {
   open: boolean;
@@ -36,14 +23,14 @@ interface PriceListImportDialogProps {
 
 export const PriceListImportDialog = ({ open, onOpenChange, onSuccess }: PriceListImportDialogProps) => {
   const [file, setFile] = useState<File | null>(null);
-  const [importData, setImportData] = useState<ImportRow[]>([]);
-  const [processing, setProcessing] = useState(false);
-  const [importing, setImporting] = useState(false);
-  const [progress, setProgress] = useState(0);
+  const [importData, setImportData] = useState<PriceListImportRow[]>([]);
   const [step, setStep] = useState<'upload' | 'preview' | 'importing' | 'complete'>('upload');
   const [importResults, setImportResults] = useState<{ success: number; errors: number }>({ success: 0, errors: 0 });
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
+  
+  const { isValidating, validatePriceListImport } = usePriceListImportValidation();
+  const { isImporting, upsertPriceListData } = usePriceListImportUpsert();
 
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = event.target.files?.[0];
@@ -55,7 +42,6 @@ export const PriceListImportDialog = ({ open, onOpenChange, onSuccess }: PriceLi
   const processFile = async () => {
     if (!file) return;
 
-    setProcessing(true);
     try {
       const arrayBuffer = await file.arrayBuffer();
       const workbook = XLSX.read(arrayBuffer);
@@ -81,75 +67,27 @@ export const PriceListImportDialog = ({ open, onOpenChange, onSuccess }: PriceLi
         return 0;
       };
 
-      const processedData: ImportRow[] = jsonData.map((row, index) => {
-        const importRow: ImportRow = {
-          product_code: toTrimmedString(row['product_code']),
-          customer_name: toTrimmedString(row['customer_name']),
-          list_name: toTrimmedString(row['list_name']),
-          list_version: toTrimmedString(row['list_version']),
-          list_identifier: toTrimmedString(row['list_identifier']),
-          unit_price: toNumber(row['unit_price']),
-          rowIndex: index + 2,
-          errors: []
-        };
+      const processedData: PriceListImportRow[] = jsonData.map((row, index) => ({
+        product_code: toTrimmedString(row['product_code']),
+        product_name: toTrimmedString(row['product_name']) || toTrimmedString(row['product_code']),
+        customer_name: toTrimmedString(row['customer_name']),
+        customer_code: toTrimmedString(row['customer_code']),
+        list_name: toTrimmedString(row['list_name']),
+        currency: toTrimmedString(row['currency']) || 'EUR',
+        unit_price: toNumber(row['unit_price']),
+        margin_percent: toNumber(row['margin_percent']) || undefined,
+        margin_euro: toNumber(row['margin_euro']) || undefined,
+        min_quantity: toNumber(row['min_quantity']) || 1,
+        notes: toTrimmedString(row['notes']) || undefined,
+        valid_from: toTrimmedString(row['valid_from']) || undefined,
+        valid_to: toTrimmedString(row['valid_to']) || undefined
+      }));
 
-        if (!importRow.product_code) {
-          importRow.errors.push('Codice prodotto mancante');
-        }
-        if (!importRow.customer_name) {
-          importRow.errors.push('Nome cliente mancante');
-        }
-        if (!importRow.list_name) {
-          importRow.errors.push('Nome listino mancante');
-        }
-        if (!importRow.unit_price || importRow.unit_price <= 0) {
-          importRow.errors.push('Prezzo unitario non valido');
-        }
+      // Validate the data
+      const validationResult = await validatePriceListImport(processedData);
+      console.log('Validation result:', validationResult);
 
-        return importRow;
-      });
-
-      const productCodes = Array.from(new Set(processedData.map(row => row.product_code).filter(Boolean)));
-      const productLookup = new Map<string, { id: string; base_cost: number | null }>();
-
-      if (productCodes.length > 0) {
-        const { data: productsData, error: productsError } = await supabase
-          .from('impellers')
-          .select('id, impeller_name, base_cost')
-          .in('impeller_name', productCodes);
-
-        if (productsError) throw productsError;
-
-        (productsData ?? []).forEach(product => {
-          productLookup.set(product.impeller_name, {
-            id: product.id,
-            base_cost: product.base_cost,
-          });
-        });
-      }
-
-      const enrichedData = processedData.map(importRow => {
-        if (importRow.product_code) {
-          const product = productLookup.get(importRow.product_code);
-          if (product) {
-            importRow.productFound = true;
-            importRow.productId = product.id;
-            importRow.baseCost = product.base_cost ?? 0;
-
-            if (importRow.unit_price > 0 && product.base_cost !== null) {
-              importRow.marginEuro = importRow.unit_price - product.base_cost;
-              importRow.marginPercent = ((importRow.unit_price - product.base_cost) / importRow.unit_price) * 100;
-            }
-          } else {
-            importRow.productFound = false;
-            importRow.errors.push('Prodotto non trovato nel database');
-          }
-        }
-
-        return importRow;
-      });
-
-      setImportData(enrichedData);
+      setImportData(processedData);
       setStep('preview');
     } catch (error) {
       console.error('Error processing file:', error);
@@ -158,163 +96,57 @@ export const PriceListImportDialog = ({ open, onOpenChange, onSuccess }: PriceLi
         description: "Errore durante la lettura del file Excel",
         variant: 'destructive'
       });
-    } finally {
-      setProcessing(false);
     }
   };
 
   const executeImport = async () => {
-    const validRows = importData.filter(row => row.errors.length === 0 && row.productFound && row.productId);
-    if (validRows.length === 0) {
+    if (importData.length === 0) {
       toast({
         title: 'Errore',
-        description: 'Nessuna riga valida da importare',
+        description: 'Nessun dato da importare',
         variant: 'destructive'
       });
       return;
     }
 
-    setImporting(true);
     setStep('importing');
-    setProgress(0);
-
-    let successCount = 0;
-    let errorCount = 0;
 
     try {
-      const groupedData = validRows.reduce((acc, row) => {
-        const key = `${row.customer_name}_${row.list_name}_${row.list_identifier}`;
-        if (!acc[key]) {
-          acc[key] = {
-            customer_name: row.customer_name,
-            list_name: row.list_name,
-            list_version: row.list_version,
-            list_identifier: row.list_identifier,
-            items: [] as ImportRow[]
-          };
-        }
-        acc[key].items.push(row);
-        return acc;
-      }, {} as Record<string, { customer_name: string; list_name: string; list_version: string; list_identifier: string; items: ImportRow[] }>);
-
-      const groups = Object.values(groupedData);
-
-      const customerNames = Array.from(new Set(groups.map(group => group.customer_name)));
-      const customerMap = new Map<string, string>();
-
-      if (customerNames.length > 0) {
-        const { data: existingCustomers, error: existingCustomersError } = await supabase
-          .from('customers')
-          .select('id, name')
-          .in('name', customerNames);
-
-        if (existingCustomersError) throw existingCustomersError;
-
-        (existingCustomers ?? []).forEach(customer => {
-          customerMap.set(customer.name, customer.id);
-        });
-      }
-
-      const missingCustomers = customerNames.filter(name => !customerMap.has(name));
-      if (missingCustomers.length > 0) {
-        const { data: newCustomers, error: insertCustomersError } = await supabase
-          .from('customers')
-          .insert(missingCustomers.map(name => ({ name })))
-          .select('id, name');
-
-        if (insertCustomersError) throw insertCustomersError;
-
-        (newCustomers ?? []).forEach(customer => {
-          customerMap.set(customer.name, customer.id);
-        });
-      }
-
-      for (let i = 0; i < groups.length; i++) {
-        const group = groups[i];
-        setProgress(Math.round((i / groups.length) * 100));
-
-        const customerId = customerMap.get(group.customer_name);
-        if (!customerId) {
-          errorCount += group.items.length;
-          continue;
-        }
-
-        try {
-          const listName = group.list_version
-            ? `${group.list_name} ${group.list_version}`.trim()
-            : group.list_name;
-
-          const { data: priceList, error: priceListError } = await supabase
-            .from('price_lists')
-            .insert([{
-              list_name: listName,
-              customer_id: customerId,
-              currency: 'EUR',
-              valid_from: new Date().toISOString().split('T')[0],
-              notes: group.list_identifier
-                ? `Importato da Excel - ${group.list_identifier}`
-                : 'Importato da Excel'
-            }])
-            .select('id')
-            .single();
-
-          if (priceListError || !priceList) {
-            errorCount += group.items.length;
-            continue;
-          }
-
-          const itemsPayload = group.items
-            .filter(item => item.productId)
-            .map(item => ({
-              price_list_id: priceList.id,
-              propeller_id: item.productId!,
-              unit_price: item.unit_price,
-              margin_percent: item.marginPercent ?? null,
-              margin_euro: item.marginEuro ?? null,
-              pricing_method: item.marginPercent !== undefined ? 'margin_percent' : 'target_price'
-            }));
-
-          if (itemsPayload.length === 0) {
-            continue;
-          }
-
-          const { error: insertItemsError } = await supabase
-            .from('price_list_items')
-            .insert(itemsPayload);
-
-          if (insertItemsError) {
-            console.error('Error inserting items:', insertItemsError);
-            errorCount += itemsPayload.length;
-          } else {
-            successCount += itemsPayload.length;
-          }
-        } catch (groupError) {
-          console.error('Error importing group:', groupError);
-          errorCount += group.items.length;
-        }
-      }
-
-      setProgress(100);
-      setImportResults({ success: successCount, errors: errorCount });
+      const result = await upsertPriceListData(importData, {}, 'upsert');
+      
+      setImportResults({ 
+        success: result.inserted + result.updated, 
+        errors: result.errors.length 
+      });
       setStep('complete');
 
-      if (successCount > 0) {
+      if (result.inserted > 0 || result.updated > 0) {
         toast({
           title: 'Import completato',
-          description: `${successCount} prodotti importati con successo${errorCount > 0 ? `, ${errorCount} errori` : ''}`
+          description: `${result.inserted} inseriti, ${result.updated} aggiornati${result.errors.length > 0 ? `, ${result.errors.length} errori` : ''}`
         });
+        
+        if (result.errors.length > 0) {
+          console.error('Import errors:', result.errors);
+        }
+        
         onSuccess();
+      } else if (result.errors.length > 0) {
+        toast({
+          title: 'Errore',
+          description: `Import fallito: ${result.errors[0]}`,
+          variant: 'destructive'
+        });
+        setStep('preview');
       }
-   } catch (error) {
-     console.error('Error during import:', error);
+    } catch (error) {
+      console.error('Error during import:', error);
       setStep('preview');
-     toast({
-       title: 'Errore',
-       description: "Errore durante l'importazione",
-       variant: 'destructive'
-     });
-    } finally {
-      setImporting(false);
+      toast({
+        title: 'Errore',
+        description: "Errore durante l'importazione",
+        variant: 'destructive'
+      });
     }
   };
 
@@ -322,7 +154,6 @@ export const PriceListImportDialog = ({ open, onOpenChange, onSuccess }: PriceLi
     setFile(null);
     setImportData([]);
     setStep('upload');
-    setProgress(0);
     setImportResults({ success: 0, errors: 0 });
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
@@ -330,7 +161,7 @@ export const PriceListImportDialog = ({ open, onOpenChange, onSuccess }: PriceLi
   };
 
   const handleClose = () => {
-    if (!importing) {
+    if (!isImporting) {
       resetDialog();
       onOpenChange(false);
     }
@@ -371,9 +202,9 @@ export const PriceListImportDialog = ({ open, onOpenChange, onSuccess }: PriceLi
                   </Button>
                   <Button
                     onClick={processFile}
-                    disabled={!file || processing}
+                    disabled={!file || isValidating}
                   >
-                    {processing ? 'Elaborazione...' : 'Elabora file'}
+                    {isValidating ? 'Validazione...' : 'Elabora file'}
                   </Button>
                 </div>
               </div>
@@ -387,7 +218,7 @@ export const PriceListImportDialog = ({ open, onOpenChange, onSuccess }: PriceLi
               <div>
                 <h3 className="text-lg font-medium">Anteprima importazione</h3>
                 <p className="text-sm text-muted-foreground">
-                  {importData.filter(row => row.errors.length === 0).length} righe valide, {importData.filter(row => row.errors.length > 0).length} errori
+                  {importData.length} righe da processare
                 </p>
               </div>
               <div className="space-x-2">
@@ -396,9 +227,9 @@ export const PriceListImportDialog = ({ open, onOpenChange, onSuccess }: PriceLi
                 </Button>
                 <Button
                   onClick={executeImport}
-                  disabled={importData.filter(row => row.errors.length === 0).length === 0}
+                  disabled={importData.length === 0 || isImporting}
                 >
-                  Importa {importData.filter(row => row.errors.length === 0).length} prodotti
+                  {isImporting ? 'Importazione...' : `Importa ${importData.length} prodotti`}
                 </Button>
               </div>
             </div>
@@ -419,31 +250,24 @@ export const PriceListImportDialog = ({ open, onOpenChange, onSuccess }: PriceLi
                 <TableBody>
                   {importData.slice(0, 50).map((row, index) => (
                     <TableRow key={index}>
-                      <TableCell>{row.rowIndex}</TableCell>
-                      <TableCell className="font-mono">{row.product_code}</TableCell>
+                      <TableCell>{index + 2}</TableCell>
+                      <TableCell className="font-mono">{row.product_code || row.product_name}</TableCell>
                       <TableCell>{row.customer_name}</TableCell>
                       <TableCell>{row.list_name}</TableCell>
-                      <TableCell>€{row.unit_price.toFixed(2)}</TableCell>
+                      <TableCell>€{(row.unit_price || 0).toFixed(2)}</TableCell>
                       <TableCell>
-                        {row.marginPercent !== undefined ? (
+                        {row.margin_percent !== undefined ? (
                           <div className="text-sm">
-                            <div>{row.marginPercent.toFixed(1)}%</div>
-                            <div className="text-muted-foreground">€{row.marginEuro?.toFixed(2)}</div>
+                            <div>{row.margin_percent.toFixed(1)}%</div>
+                            <div className="text-muted-foreground">€{row.margin_euro?.toFixed(2)}</div>
                           </div>
                         ) : '-'}
                       </TableCell>
                       <TableCell>
-                        {row.errors.length === 0 ? (
-                          <Badge variant="secondary">
-                            <CheckCircle className="h-3 w-3 mr-1" />
-                            Valido
-                          </Badge>
-                        ) : (
-                          <Badge variant="destructive">
-                            <AlertTriangle className="h-3 w-3 mr-1" />
-                            {row.errors.length} errori
-                          </Badge>
-                        )}
+                        <Badge variant="secondary">
+                          <CheckCircle className="h-3 w-3 mr-1" />
+                          Pronto
+                        </Badge>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -457,14 +281,12 @@ export const PriceListImportDialog = ({ open, onOpenChange, onSuccess }: PriceLi
               </p>
             )}
 
-            {importData.some(row => row.errors.length > 0) && (
-              <Alert variant="destructive">
-                <AlertTriangle className="h-4 w-4" />
-                <AlertDescription>
-                  Correggi gli errori evidenziati nel file e ricarica il documento per includere tutte le righe.
-                </AlertDescription>
-              </Alert>
-            )}
+            <Alert>
+              <AlertTriangle className="h-4 w-4" />
+              <AlertDescription>
+                I dati verranno validati durante l'importazione. Le righe non valide verranno saltate automaticamente.
+              </AlertDescription>
+            </Alert>
           </div>
         )}
 
@@ -475,7 +297,6 @@ export const PriceListImportDialog = ({ open, onOpenChange, onSuccess }: PriceLi
               <h3 className="text-lg font-medium">Importazione in corso...</h3>
               <p className="text-muted-foreground">Non chiudere questa finestra</p>
             </div>
-            <Progress value={progress} className="w-full" />
           </div>
         )}
 
