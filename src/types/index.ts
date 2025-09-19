@@ -210,31 +210,29 @@ export interface RubberCalculation {
   indicative_cost?: number;
 }
 
-// Search and filtering
-export interface ImpellerSearchCriteria {
-  outer_diameter_mm?: number;
-  inner_diameter_mm?: number;
-  height_mm?: number;
-  hub_diameter_mm?: number;
-  blade_count?: number;
-  tolerance_od_mm?: number;
-  tolerance_id_mm?: number;
-  tolerance_height_mm?: number;
-  tolerance_hub_mm?: number;
-  tolerance_blade_count?: number;
-}
 
-// Legacy types compatibility (da rimuovere gradualmente)
+// Legacy Product interface (for existing pages compatibility)
 export interface Product {
-  id: string;
-  model: string;
+  product_id: string;
+  product_type: ProductType;
+  name: string;
+  internal_code?: string;
+  uom: UnitOfMeasure;
+  base_cost: number;
+  gross_margin_pct?: number;
+  base_list_price?: number;
+  drawing_link_url?: string;
+  notes?: string;
+  created_at: string;
+  updated_at: string;
+  
+  // Additional legacy fields for compatibility
+  id?: string;
+  model?: string;
   material_type?: string;
   diameter?: number;
   pitch?: number;
   blades?: number;
-  base_cost?: number;
   description?: string;
   status?: string;
-  created_at: string;
-  updated_at: string;
 }
