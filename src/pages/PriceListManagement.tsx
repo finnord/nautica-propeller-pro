@@ -22,6 +22,9 @@ import {
   Download,
   Upload
 } from 'lucide-react';
+import { downloadPriceListTemplate } from '@/lib/excel-utils';
+import { NewPriceListDialog } from '@/components/dialogs/NewPriceListDialog';
+import { PriceListImportDialog } from '@/components/dialogs/PriceListImportDialog';
 import { format } from 'date-fns';
 import { it } from 'date-fns/locale';
 
@@ -51,6 +54,8 @@ export const PriceListManagement = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCustomer, setSelectedCustomer] = useState<string>('all');
   const [selectedStatus, setSelectedStatus] = useState<string>('all');
+  const [showNewDialog, setShowNewDialog] = useState(false);
+  const [showImportDialog, setShowImportDialog] = useState(false);
 
   useEffect(() => {
     fetchData();
@@ -184,15 +189,26 @@ export const PriceListManagement = () => {
             <p className="text-body">Gestisci e confronta i listini prezzi dei clienti</p>
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" className="gap-2">
+            <Button 
+              variant="outline" 
+              className="gap-2"
+              onClick={downloadPriceListTemplate}
+            >
               <Download className="h-4 w-4" />
-              Esporta
+              Esporta template
             </Button>
-            <Button variant="outline" className="gap-2">
+            <Button 
+              variant="outline" 
+              className="gap-2"
+              onClick={() => setShowImportDialog(true)}
+            >
               <Upload className="h-4 w-4" />
-              Importa
+              Importa Excel
             </Button>
-            <Button className="gap-2">
+            <Button 
+              className="gap-2"
+              onClick={() => setShowNewDialog(true)}
+            >
               <Plus className="h-4 w-4" />
               Nuovo listino
             </Button>
@@ -352,6 +368,20 @@ export const PriceListManagement = () => {
             </Table>
           </CardContent>
         </Card>
+
+        {/* Dialogs */}
+        <NewPriceListDialog
+          open={showNewDialog}
+          onOpenChange={setShowNewDialog}
+          customers={customers}
+          onSuccess={fetchData}
+        />
+
+        <PriceListImportDialog
+          open={showImportDialog}
+          onOpenChange={setShowImportDialog}
+          onSuccess={fetchData}
+        />
       </div>
     </AppLayout>
   );

@@ -407,6 +407,100 @@ export const downloadTemplate = () => {
   }
 };
 
+// Price List Template
+export const priceListTemplate: TemplateSheet = {
+  name: 'PriceListImport',
+  description: 'Template per importazione listini prezzi',
+  headers: [
+    'product_code',
+    'customer_name', 
+    'list_name',
+    'list_version',
+    'list_identifier',
+    'unit_price'
+  ],
+  data: [
+    {
+      product_code: 'SP-3142',
+      customer_name: 'Marina SpA',
+      list_name: 'Listino 2024',
+      list_version: 'v1.0', 
+      list_identifier: '2024-001',
+      unit_price: 85.50
+    },
+    {
+      product_code: 'SP-2847',
+      customer_name: 'Marina SpA',
+      list_name: 'Listino 2024', 
+      list_version: 'v1.0',
+      list_identifier: '2024-001',
+      unit_price: 72.30
+    }
+  ]
+};
+
+export const downloadPriceListTemplate = () => {
+  try {
+    const wb = XLSX.utils.book_new();
+    
+    // Add info sheet
+    const infoSheet = XLSX.utils.aoa_to_sheet([
+      ['TEMPLATE IMPORTAZIONE LISTINI PREZZI'],
+      [''],
+      ['ISTRUZIONI:'],
+      ['1. Compilare tutte le colonne obbligatorie'],
+      ['2. I codici prodotto devono esistere nel database'],
+      ['3. I prezzi verranno confrontati con i costi base per calcolare i margini'],
+      ['4. Se il cliente non esiste verrà creato automaticamente'],
+      [''],
+      ['COLONNE:'],
+      ['• product_code: Codice prodotto (obbligatorio)'],
+      ['• customer_name: Nome cliente (obbligatorio)'],
+      ['• list_name: Nome del listino (obbligatorio)'],
+      ['• list_version: Versione listino (es. v1.0)'],
+      ['• list_identifier: Identificativo univoco (es. 2024-001)'],
+      ['• unit_price: Prezzo unitario in EUR (obbligatorio)'],
+      [''],
+      ['NOTA: Il margine verrà calcolato automaticamente confrontando'],
+      ['il prezzo unitario con il costo base del prodotto nel database.']
+    ]);
+    XLSX.utils.book_append_sheet(wb, infoSheet, 'ISTRUZIONI');
+    
+    // Add template sheet
+    const templateData = priceListTemplate.data || [];
+    const ws = XLSX.utils.json_to_sheet(templateData);
+    
+    // Set column widths
+    ws['!cols'] = [
+      { wch: 15 }, // product_code
+      { wch: 25 }, // customer_name
+      { wch: 20 }, // list_name
+      { wch: 12 }, // list_version
+      { wch: 15 }, // list_identifier  
+      { wch: 12 }  // unit_price
+    ];
+    
+    XLSX.utils.book_append_sheet(wb, ws, priceListTemplate.name);
+    
+    const buffer = XLSX.write(wb, { type: 'array', bookType: 'xlsx' });
+    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = URL.createObjectURL(blob);
+    
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `Template_Listini_Prezzi_${new Date().toISOString().slice(0, 10)}.xlsx`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
+    URL.revokeObjectURL(url);
+    return true;
+  } catch (error) {
+    console.error('Errore durante la creazione del template listini:', error);
+    return false;
+  }
+};
+
 export const downloadExportData = (exportType: 'products' | 'customers' | 'rfq' | 'equivalences' | 'complete', format: 'xlsx' | 'csv' = 'xlsx') => {
   try {
     let sheets: TemplateSheet[] = [];
