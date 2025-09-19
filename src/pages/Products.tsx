@@ -1,23 +1,23 @@
 import { useState } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { 
-  Search, 
-  Plus, 
-  Filter, 
   Ship, 
   Eye,
   Edit,
   ExternalLink,
-  Grid3X3,
-  List
+  Plus
 } from 'lucide-react';
 import { Product, ProductType } from '@/types';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table-view';
 import { useNavigate } from 'react-router-dom';
+import { PageHeader } from '@/components/ui/page-header';
+import { ViewModeToggle } from '@/components/ui/view-mode-toggle';
+import { SearchFilterCard } from '@/components/ui/search-filter-card';
+import { StatusFilterButtons } from '@/components/ui/status-filter-buttons';
+import { ActionButtonGroup, ActionButton } from '@/components/ui/action-button-group';
+import { EmptyStateCard } from '@/components/ui/empty-state-card';
 
 // Mock data for demonstration
 const mockProducts: Product[] = [
@@ -95,6 +95,13 @@ export default function Products() {
   const [selectedType, setSelectedType] = useState<ProductType | 'all'>('all');
   const [viewMode, setViewMode] = useState<'cards' | 'table'>('cards');
 
+  const typeOptions = [
+    { value: 'all', label: 'Tutti' },
+    { value: 'impeller', label: 'Giranti' },
+    { value: 'bushing', label: 'Bussole' },
+    { value: 'kit', label: 'Kit' }
+  ];
+
   const filteredProducts = mockProducts.filter(product => {
     const matchesSearch = product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          product.product_id.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -108,90 +115,38 @@ export default function Products() {
   return (
     <AppLayout>
       <div className="space-y-6">
-        {/* Header */}
-        <div className="flex justify-between items-center">
-          <div>
-            <h1 className="text-heading">Gestione Prodotti</h1>
-            <p className="text-body">Giranti, bussole, kit e prodotti generici</p>
-          </div>
-          <div className="flex gap-2">
-            <div className="flex border rounded-md">
-              <Button
-                variant={viewMode === 'cards' ? 'default' : 'ghost'}
-                size="sm"
-                onClick={() => setViewMode('cards')}
-              >
-                <Grid3X3 className="h-4 w-4" />
-              </Button>
-              <Button
-                variant={viewMode === 'table' ? 'default' : 'ghost'}
-                size="sm"
-                onClick={() => setViewMode('table')}
-              >
-                <List className="h-4 w-4" />
-              </Button>
+        <PageHeader
+          title="Gestione Prodotti"
+          description="Giranti, bussole, kit e prodotti generici"
+          actions={
+            <div className="flex gap-2">
+              <ViewModeToggle 
+                viewMode={viewMode} 
+                onViewModeChange={setViewMode} 
+              />
+              <ActionButtonGroup
+                actions={[{
+                  icon: Plus,
+                  label: 'Nuovo Prodotto',
+                  onClick: () => navigate('/products/new'),
+                  variant: 'default'
+                }]}
+              />
             </div>
-            <Button 
-              className="btn-primary"
-              onClick={() => navigate('/products/new')}
-            >
-              <Plus className="h-4 w-4 mr-2" />
-              Nuovo Prodotto
-            </Button>
-          </div>
-        </div>
+          }
+        />
 
-        {/* Filters */}
-        <Card className="card-elevated">
-          <CardHeader>
-            <CardTitle className="text-lg">Filtri</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex flex-col sm:flex-row gap-4">
-              <div className="flex-1">
-                <div className="relative">
-                  <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    placeholder="Cerca per nome, codice prodotto o codice interno..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="pl-10 input-business"
-                  />
-                </div>
-              </div>
-              <div className="flex gap-2">
-                <Button
-                  variant={selectedType === 'all' ? 'default' : 'outline'}
-                  size="sm"
-                  onClick={() => setSelectedType('all')}
-                >
-                  Tutti
-                </Button>
-                <Button
-                  variant={selectedType === 'impeller' ? 'default' : 'outline'}
-                  size="sm"
-                  onClick={() => setSelectedType('impeller')}
-                >
-                  Giranti
-                </Button>
-                <Button
-                  variant={selectedType === 'bushing' ? 'default' : 'outline'}
-                  size="sm"
-                  onClick={() => setSelectedType('bushing')}
-                >
-                  Bussole
-                </Button>
-                <Button
-                  variant={selectedType === 'kit' ? 'default' : 'outline'}
-                  size="sm"
-                  onClick={() => setSelectedType('kit')}
-                >
-                  Kit
-                </Button>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+        <SearchFilterCard
+          searchTerm={searchTerm}
+          onSearchChange={setSearchTerm}
+          placeholder="Cerca per nome, codice prodotto o codice interno..."
+        >
+          <StatusFilterButtons
+            selectedStatus={selectedType}
+            onStatusChange={(status) => setSelectedType(status as ProductType | 'all')}
+            options={typeOptions}
+          />
+        </SearchFilterCard>
 
         {/* Products Display */}
         {viewMode === 'cards' ? (
@@ -219,7 +174,7 @@ export default function Products() {
                 <CardContent className="space-y-4">
                   <div className="grid grid-cols-2 gap-4 text-sm">
                     <div>
-                      <p className="text-muted-foreground">Costo Base</p>
+                      <p className="text-muted-foreground">Costo Industriale</p>
                       <p className="font-semibold">€{product.base_cost.toFixed(2)}</p>
                     </div>
                     <div>
@@ -251,29 +206,28 @@ export default function Products() {
                   )}
 
                   <div className="flex justify-between items-center pt-4 border-t border-border">
-                    <div className="flex gap-2">
-                      <Button 
-                        size="sm" 
-                        variant="outline"
-                        onClick={() => navigate(`/products/${product.product_id}`)}
-                      >
-                        <Eye className="h-3 w-3 mr-1" />
-                        Dettagli
-                      </Button>
-                      <Button 
-                        size="sm" 
-                        variant="outline"
-                        onClick={() => navigate(`/products/${product.product_id}/edit`)}
-                      >
-                        <Edit className="h-3 w-3 mr-1" />
-                        Modifica
-                      </Button>
-                    </div>
-                    {product.drawing_link_url && (
-                      <Button size="sm" variant="ghost">
-                        <ExternalLink className="h-3 w-3" />
-                      </Button>
-                    )}
+                    <ActionButtonGroup
+                      actions={[
+                        {
+                          icon: Eye,
+                          label: 'Dettagli',
+                          onClick: () => navigate(`/products/${product.product_id}`),
+                          variant: 'outline'
+                        },
+                        {
+                          icon: Edit,
+                          label: 'Modifica',
+                          onClick: () => navigate(`/products/${product.product_id}/edit`),
+                          variant: 'outline'
+                        },
+                        ...(product.drawing_link_url ? [{
+                          icon: ExternalLink,
+                          label: '',
+                          onClick: () => window.open(product.drawing_link_url, '_blank'),
+                          variant: 'ghost' as const
+                        }] : [])
+                      ]}
+                    />
                   </div>
                 </CardContent>
               </Card>
@@ -288,7 +242,7 @@ export default function Products() {
                     <TableHead>Prodotto</TableHead>
                     <TableHead>Tipo</TableHead>
                     <TableHead>Codice</TableHead>
-                    <TableHead className="text-right">Costo</TableHead>
+                    <TableHead className="text-right">Costo Industriale</TableHead>
                     <TableHead className="text-right">Prezzo</TableHead>
                     <TableHead className="text-right">Margine</TableHead>
                     <TableHead>UdM</TableHead>
@@ -329,29 +283,28 @@ export default function Products() {
                         {product.uom}
                       </TableCell>
                       <TableCell className="text-right">
-                        <div className="flex gap-2 justify-end">
-                          <Button 
-                            size="sm" 
-                            variant="outline"
-                            onClick={() => navigate(`/products/${product.product_id}`)}
-                          >
-                            <Eye className="h-3 w-3 mr-1" />
-                            Dettagli
-                          </Button>
-                          <Button 
-                            size="sm" 
-                            variant="outline"
-                            onClick={() => navigate(`/products/${product.product_id}/edit`)}
-                          >
-                            <Edit className="h-3 w-3 mr-1" />
-                            Modifica
-                          </Button>
-                          {product.drawing_link_url && (
-                            <Button size="sm" variant="ghost">
-                              <ExternalLink className="h-3 w-3" />
-                            </Button>
-                          )}
-                        </div>
+                        <ActionButtonGroup
+                          actions={[
+                            {
+                              icon: Eye,
+                              label: 'Dettagli',
+                              onClick: () => navigate(`/products/${product.product_id}`),
+                              variant: 'outline'
+                            },
+                            {
+                              icon: Edit,
+                              label: 'Modifica',
+                              onClick: () => navigate(`/products/${product.product_id}/edit`),
+                              variant: 'outline'
+                            },
+                            ...(product.drawing_link_url ? [{
+                              icon: ExternalLink,
+                              label: '',
+                              onClick: () => window.open(product.drawing_link_url, '_blank'),
+                              variant: 'ghost' as const
+                            }] : [])
+                          ]}
+                        />
                       </TableCell>
                     </TableRow>
                   ))}
@@ -362,22 +315,16 @@ export default function Products() {
         )}
 
         {filteredProducts.length === 0 && (
-          <Card className="card-elevated">
-            <CardContent className="text-center py-12">
-              <Ship className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-              <h3 className="text-lg font-semibold mb-2">Nessun prodotto trovato</h3>
-              <p className="text-muted-foreground mb-4">
-                Prova a modificare i filtri di ricerca o aggiungi un nuovo prodotto.
-              </p>
-              <Button 
-                className="btn-primary"
-                onClick={() => navigate('/products/new')}
-              >
-                <Plus className="h-4 w-4 mr-2" />
-                Aggiungi Prodotto
-              </Button>
-            </CardContent>
-          </Card>
+          <EmptyStateCard
+            icon={Ship}
+            title="Nessun prodotto trovato"
+            description="Prova a modificare i filtri di ricerca o aggiungi un nuovo prodotto."
+            actionButton={{
+              label: "Aggiungi Prodotto",
+              onClick: () => navigate('/products/new'),
+              icon: Plus
+            }}
+          />
         )}
       </div>
     </AppLayout>

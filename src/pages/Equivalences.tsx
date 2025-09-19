@@ -1,12 +1,9 @@
 import { useState } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { 
-  Search, 
   Plus, 
   ArrowLeftRight, 
   Eye,
@@ -15,6 +12,12 @@ import {
   Circle
 } from 'lucide-react';
 import { EquivalentImpeller, EquivalentBushing, MatchType } from '@/types';
+import { PageHeader } from '@/components/ui/page-header';
+import { ViewModeToggle } from '@/components/ui/view-mode-toggle';
+import { SearchFilterCard } from '@/components/ui/search-filter-card';
+import { ActionButtonGroup } from '@/components/ui/action-button-group';
+import { EmptyStateCard } from '@/components/ui/empty-state-card';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table-view';
 
 // Mock data for demonstration
 const mockImpellerEquivalences: EquivalentImpeller[] = [
@@ -81,6 +84,7 @@ const getMatchTypeLabel = (type: MatchType) => {
 export default function Equivalences() {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedTab, setSelectedTab] = useState('impellers');
+  const [viewMode, setViewMode] = useState<'cards' | 'table'>('cards');
 
   const filteredImpellerEquivalences = mockImpellerEquivalences.filter(eq =>
     eq.source_product_id.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -97,38 +101,32 @@ export default function Equivalences() {
   return (
     <AppLayout>
       <div className="space-y-6">
-        {/* Header */}
-        <div className="flex justify-between items-center">
-          <div>
-            <h1 className="text-heading">Gestione Equivalenze</h1>
-            <p className="text-body">Equivalenze tra giranti e bussole per sostituzioni</p>
-          </div>
-          <Button 
-            className="btn-primary"
-            onClick={() => window.location.href = '/equivalences/new'}
-          >
-            <Plus className="h-4 w-4 mr-2" />
-            Nuova Equivalenza
-          </Button>
-        </div>
-
-        {/* Search */}
-        <Card className="card-elevated">
-          <CardHeader>
-            <CardTitle className="text-lg">Ricerca Equivalenze</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="relative">
-              <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Cerca per codice prodotto, bussola o note..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10 input-business"
+        <PageHeader
+          title="Gestione Equivalenze"
+          description="Equivalenze tra giranti e bussole per sostituzioni"
+          actions={
+            <div className="flex gap-2">
+              <ViewModeToggle 
+                viewMode={viewMode} 
+                onViewModeChange={setViewMode} 
+              />
+              <ActionButtonGroup
+                actions={[{
+                  icon: Plus,
+                  label: 'Nuova Equivalenza',
+                  onClick: () => window.location.href = '/equivalences/new',
+                  variant: 'default'
+                }]}
               />
             </div>
-          </CardContent>
-        </Card>
+          }
+        />
+
+        <SearchFilterCard
+          searchTerm={searchTerm}
+          onSearchChange={setSearchTerm}
+          placeholder="Cerca per codice prodotto, bussola o note..."
+        />
 
         {/* Equivalences Tabs */}
         <Tabs value={selectedTab} onValueChange={setSelectedTab}>
@@ -144,173 +142,292 @@ export default function Equivalences() {
           </TabsList>
 
           <TabsContent value="impellers" className="space-y-4">
-            <div className="grid grid-cols-1 gap-4">
-              {filteredImpellerEquivalences.map((eq, index) => (
-                <Card key={index} className="card-interactive">
-                  <CardContent className="pt-6">
-                    <div className="flex items-center justify-between mb-4">
-                      <div className="flex items-center gap-4">
-                        <div className="text-center">
-                          <p className="text-sm text-muted-foreground">Sorgente</p>
-                          <p className="font-mono font-semibold">{eq.source_product_id}</p>
+            {viewMode === 'cards' ? (
+              <div className="grid grid-cols-1 gap-4">
+                {filteredImpellerEquivalences.map((eq, index) => (
+                  <Card key={index} className="card-interactive">
+                    <CardContent className="pt-6">
+                      <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center gap-4">
+                          <div className="text-center">
+                            <p className="text-sm text-muted-foreground">Sorgente</p>
+                            <p className="font-mono font-semibold">{eq.source_product_id}</p>
+                          </div>
+                          <ArrowLeftRight className="h-5 w-5 text-muted-foreground" />
+                          <div className="text-center">
+                            <p className="text-sm text-muted-foreground">Target</p>
+                            <p className="font-mono font-semibold">{eq.target_product_id}</p>
+                          </div>
                         </div>
-                        <ArrowLeftRight className="h-5 w-5 text-muted-foreground" />
-                        <div className="text-center">
-                          <p className="text-sm text-muted-foreground">Target</p>
-                          <p className="font-mono font-semibold">{eq.target_product_id}</p>
-                        </div>
+                        <Badge className={getMatchTypeColor(eq.match_type)}>
+                          {getMatchTypeLabel(eq.match_type)}
+                        </Badge>
                       </div>
-                      <Badge className={getMatchTypeColor(eq.match_type)}>
-                        {getMatchTypeLabel(eq.match_type)}
-                      </Badge>
-                    </div>
 
-                    {eq.dimension_tolerance_mm && (
-                      <div className="mb-3">
-                        <p className="text-sm text-muted-foreground">Tolleranza Dimensionale</p>
-                        <p className="text-sm font-semibold">±{eq.dimension_tolerance_mm}mm</p>
-                      </div>
-                    )}
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4 text-sm">
-                      {eq.material_note && (
-                        <div>
-                          <p className="text-muted-foreground">Note Materiale</p>
-                          <p className="text-xs leading-relaxed">{eq.material_note}</p>
+                      {eq.dimension_tolerance_mm && (
+                        <div className="mb-3">
+                          <p className="text-sm text-muted-foreground">Tolleranza Dimensionale</p>
+                          <p className="text-sm font-semibold">±{eq.dimension_tolerance_mm}mm</p>
                         </div>
                       )}
-                      {eq.bushing_note && (
-                        <div>
-                          <p className="text-muted-foreground">Note Bussola</p>
-                          <p className="text-xs leading-relaxed">{eq.bushing_note}</p>
-                        </div>
-                      )}
-                      {eq.shaft_profile_note && (
-                        <div>
-                          <p className="text-muted-foreground">Profilo Albero</p>
-                          <p className="text-xs leading-relaxed">{eq.shaft_profile_note}</p>
-                        </div>
-                      )}
-                    </div>
 
-                    {eq.general_note && (
-                      <div className="mb-4">
-                        <p className="text-sm text-muted-foreground">Note Generali</p>
-                        <p className="text-xs leading-relaxed">{eq.general_note}</p>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4 text-sm">
+                        {eq.material_note && (
+                          <div>
+                            <p className="text-muted-foreground">Note Materiale</p>
+                            <p className="text-xs leading-relaxed">{eq.material_note}</p>
+                          </div>
+                        )}
+                        {eq.bushing_note && (
+                          <div>
+                            <p className="text-muted-foreground">Note Bussola</p>
+                            <p className="text-xs leading-relaxed">{eq.bushing_note}</p>
+                          </div>
+                        )}
+                        {eq.shaft_profile_note && (
+                          <div>
+                            <p className="text-muted-foreground">Profilo Albero</p>
+                            <p className="text-xs leading-relaxed">{eq.shaft_profile_note}</p>
+                          </div>
+                        )}
                       </div>
-                    )}
 
-                    <div className="flex justify-end gap-2 pt-4 border-t border-border">
-                      <Button size="sm" variant="outline">
-                        <Eye className="h-3 w-3 mr-1" />
-                        Dettagli
-                      </Button>
-                      <Button size="sm" variant="outline">
-                        <Edit className="h-3 w-3 mr-1" />
-                        Modifica
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
+                      {eq.general_note && (
+                        <div className="mb-4">
+                          <p className="text-sm text-muted-foreground">Note Generali</p>
+                          <p className="text-xs leading-relaxed">{eq.general_note}</p>
+                        </div>
+                      )}
 
-            {filteredImpellerEquivalences.length === 0 && (
+                      <div className="flex justify-end gap-2 pt-4 border-t border-border">
+                        <ActionButtonGroup
+                          actions={[
+                            {
+                              icon: Eye,
+                              label: 'Dettagli',
+                              onClick: () => {},
+                              variant: 'outline'
+                            },
+                            {
+                              icon: Edit,
+                              label: 'Modifica',
+                              onClick: () => {},
+                              variant: 'outline'
+                            }
+                          ]}
+                        />
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            ) : (
               <Card className="card-elevated">
-                <CardContent className="text-center py-12">
-                  <Ship className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                  <h3 className="text-lg font-semibold mb-2">Nessuna equivalenza trovata</h3>
-                  <p className="text-muted-foreground mb-4">
-                    Prova a modificare i criteri di ricerca o aggiungi una nuova equivalenza.
-                  </p>
-                  <Button 
-                    className="btn-primary"
-                    onClick={() => window.location.href = '/equivalences/new'}
-                  >
-                    <Plus className="h-4 w-4 mr-2" />
-                    Nuova Equivalenza Girante
-                  </Button>
+                <CardContent className="p-0">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Sorgente</TableHead>
+                        <TableHead>Target</TableHead>
+                        <TableHead>Tipo Equivalenza</TableHead>
+                        <TableHead>Tolleranza</TableHead>
+                        <TableHead>Note</TableHead>
+                        <TableHead className="text-right">Azioni</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredImpellerEquivalences.map((eq, index) => (
+                        <TableRow key={index}>
+                          <TableCell className="font-mono">{eq.source_product_id}</TableCell>
+                          <TableCell className="font-mono">{eq.target_product_id}</TableCell>
+                          <TableCell>
+                            <Badge className={getMatchTypeColor(eq.match_type)}>
+                              {getMatchTypeLabel(eq.match_type)}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            {eq.dimension_tolerance_mm ? `±${eq.dimension_tolerance_mm}mm` : 'N/D'}
+                          </TableCell>
+                          <TableCell className="max-w-xs truncate">
+                            {eq.general_note || eq.material_note || 'N/D'}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <ActionButtonGroup
+                              actions={[
+                                {
+                                  icon: Eye,
+                                  label: 'Dettagli',
+                                  onClick: () => {},
+                                  variant: 'outline'
+                                },
+                                {
+                                  icon: Edit,
+                                  label: 'Modifica',
+                                  onClick: () => {},
+                                  variant: 'outline'
+                                }
+                              ]}
+                            />
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
                 </CardContent>
               </Card>
+            )}
+
+            {filteredImpellerEquivalences.length === 0 && (
+              <EmptyStateCard
+                icon={Ship}
+                title="Nessuna equivalenza trovata"
+                description="Prova a modificare i criteri di ricerca o aggiungi una nuova equivalenza."
+                actionButton={{
+                  label: "Nuova Equivalenza Girante",
+                  onClick: () => window.location.href = '/equivalences/new',
+                  icon: Plus
+                }}
+              />
             )}
           </TabsContent>
 
           <TabsContent value="bushings" className="space-y-4">
-            <div className="grid grid-cols-1 gap-4">
-              {filteredBushingEquivalences.map((eq, index) => (
-                <Card key={index} className="card-interactive">
-                  <CardContent className="pt-6">
-                    <div className="flex items-center justify-between mb-4">
-                      <div className="flex items-center gap-4">
-                        <div className="text-center">
-                          <p className="text-sm text-muted-foreground">Sorgente</p>
-                          <p className="font-mono font-semibold">{eq.source_bushing_code}</p>
+            {viewMode === 'cards' ? (
+              <div className="grid grid-cols-1 gap-4">
+                {filteredBushingEquivalences.map((eq, index) => (
+                  <Card key={index} className="card-interactive">
+                    <CardContent className="pt-6">
+                      <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center gap-4">
+                          <div className="text-center">
+                            <p className="text-sm text-muted-foreground">Sorgente</p>
+                            <p className="font-mono font-semibold">{eq.source_bushing_code}</p>
+                          </div>
+                          <ArrowLeftRight className="h-5 w-5 text-muted-foreground" />
+                          <div className="text-center">
+                            <p className="text-sm text-muted-foreground">Target</p>
+                            <p className="font-mono font-semibold">{eq.target_bushing_code}</p>
+                          </div>
                         </div>
-                        <ArrowLeftRight className="h-5 w-5 text-muted-foreground" />
-                        <div className="text-center">
-                          <p className="text-sm text-muted-foreground">Target</p>
-                          <p className="font-mono font-semibold">{eq.target_bushing_code}</p>
+                        <div className="flex gap-2">
+                          <Badge className={getMatchTypeColor(eq.match_type)}>
+                            {getMatchTypeLabel(eq.match_type)}
+                          </Badge>
+                          <Badge variant={eq.shaft_profile_compatible === 'yes' ? 'default' : 'destructive'}>
+                            Profilo: {eq.shaft_profile_compatible === 'yes' ? 'Compatibile' : 
+                                     eq.shaft_profile_compatible === 'no' ? 'Non Compatibile' : 'Sconosciuto'}
+                          </Badge>
                         </div>
                       </div>
-                      <div className="flex gap-2">
-                        <Badge className={getMatchTypeColor(eq.match_type)}>
-                          {getMatchTypeLabel(eq.match_type)}
-                        </Badge>
-                        <Badge variant={eq.shaft_profile_compatible === 'yes' ? 'default' : 'destructive'}>
-                          Profilo: {eq.shaft_profile_compatible === 'yes' ? 'Compatibile' : 
-                                   eq.shaft_profile_compatible === 'no' ? 'Non Compatibile' : 'Sconosciuto'}
-                        </Badge>
-                      </div>
-                    </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4 text-sm">
-                      {eq.material_note && (
-                        <div>
-                          <p className="text-muted-foreground">Note Materiale</p>
-                          <p className="text-xs leading-relaxed">{eq.material_note}</p>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4 text-sm">
+                        {eq.material_note && (
+                          <div>
+                            <p className="text-muted-foreground">Note Materiale</p>
+                            <p className="text-xs leading-relaxed">{eq.material_note}</p>
+                          </div>
+                        )}
+                      </div>
+
+                      {eq.general_note && (
+                        <div className="mb-4">
+                          <p className="text-sm text-muted-foreground">Note Generali</p>
+                          <p className="text-xs leading-relaxed">{eq.general_note}</p>
                         </div>
                       )}
-                    </div>
 
-                    {eq.general_note && (
-                      <div className="mb-4">
-                        <p className="text-sm text-muted-foreground">Note Generali</p>
-                        <p className="text-xs leading-relaxed">{eq.general_note}</p>
+                      <div className="flex justify-end gap-2 pt-4 border-t border-border">
+                        <ActionButtonGroup
+                          actions={[
+                            {
+                              icon: Eye,
+                              label: 'Dettagli',
+                              onClick: () => {},
+                              variant: 'outline'
+                            },
+                            {
+                              icon: Edit,
+                              label: 'Modifica',
+                              onClick: () => {},
+                              variant: 'outline'
+                            }
+                          ]}
+                        />
                       </div>
-                    )}
-
-                    <div className="flex justify-end gap-2 pt-4 border-t border-border">
-                      <Button size="sm" variant="outline">
-                        <Eye className="h-3 w-3 mr-1" />
-                        Dettagli
-                      </Button>
-                      <Button size="sm" variant="outline">
-                        <Edit className="h-3 w-3 mr-1" />
-                        Modifica
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-
-            {filteredBushingEquivalences.length === 0 && (
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            ) : (
               <Card className="card-elevated">
-                <CardContent className="text-center py-12">
-                  <Circle className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                  <h3 className="text-lg font-semibold mb-2">Nessuna equivalenza trovata</h3>
-                  <p className="text-muted-foreground mb-4">
-                    Prova a modificare i criteri di ricerca o aggiungi una nuova equivalenza.
-                  </p>
-                  <Button 
-                    className="btn-primary"
-                    onClick={() => window.location.href = '/equivalences/new'}
-                  >
-                    <Plus className="h-4 w-4 mr-2" />
-                    Nuova Equivalenza Bussola
-                  </Button>
+                <CardContent className="p-0">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Sorgente</TableHead>
+                        <TableHead>Target</TableHead>
+                        <TableHead>Tipo Equivalenza</TableHead>
+                        <TableHead>Compatibilità Profilo</TableHead>
+                        <TableHead>Note</TableHead>
+                        <TableHead className="text-right">Azioni</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredBushingEquivalences.map((eq, index) => (
+                        <TableRow key={index}>
+                          <TableCell className="font-mono">{eq.source_bushing_code}</TableCell>
+                          <TableCell className="font-mono">{eq.target_bushing_code}</TableCell>
+                          <TableCell>
+                            <Badge className={getMatchTypeColor(eq.match_type)}>
+                              {getMatchTypeLabel(eq.match_type)}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant={eq.shaft_profile_compatible === 'yes' ? 'default' : 'destructive'}>
+                              {eq.shaft_profile_compatible === 'yes' ? 'Compatibile' : 
+                               eq.shaft_profile_compatible === 'no' ? 'Non Compatibile' : 'Sconosciuto'}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="max-w-xs truncate">
+                            {eq.general_note || eq.material_note || 'N/D'}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <ActionButtonGroup
+                              actions={[
+                                {
+                                  icon: Eye,
+                                  label: 'Dettagli',
+                                  onClick: () => {},
+                                  variant: 'outline'
+                                },
+                                {
+                                  icon: Edit,
+                                  label: 'Modifica',
+                                  onClick: () => {},
+                                  variant: 'outline'
+                                }
+                              ]}
+                            />
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
                 </CardContent>
               </Card>
+            )}
+
+            {filteredBushingEquivalences.length === 0 && (
+              <EmptyStateCard
+                icon={Circle}
+                title="Nessuna equivalenza trovata"
+                description="Prova a modificare i criteri di ricerca o aggiungi una nuova equivalenza."
+                actionButton={{
+                  label: "Nuova Equivalenza Bussola",
+                  onClick: () => window.location.href = '/equivalences/new',
+                  icon: Plus
+                }}
+              />
             )}
           </TabsContent>
         </Tabs>

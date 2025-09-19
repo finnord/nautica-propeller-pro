@@ -1,11 +1,8 @@
 import { useState } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Card, CardContent } from '@/components/ui/card';
 import { 
-  Search, 
   Plus, 
   Users, 
   Eye,
@@ -14,6 +11,12 @@ import {
   Globe
 } from 'lucide-react';
 import { Customer } from '@/types';
+import { PageHeader } from '@/components/ui/page-header';
+import { ViewModeToggle } from '@/components/ui/view-mode-toggle';
+import { SearchFilterCard } from '@/components/ui/search-filter-card';
+import { ActionButtonGroup } from '@/components/ui/action-button-group';
+import { EmptyStateCard } from '@/components/ui/empty-state-card';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table-view';
 
 // Mock data for demonstration
 const mockCustomers: Customer[] = [
@@ -48,6 +51,7 @@ const mockCustomers: Customer[] = [
 
 export default function Customers() {
   const [searchTerm, setSearchTerm] = useState('');
+  const [viewMode, setViewMode] = useState<'cards' | 'table'>('cards');
 
   const filteredCustomers = mockCustomers.filter(customer =>
     customer.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -58,132 +62,223 @@ export default function Customers() {
   return (
     <AppLayout>
       <div className="space-y-6">
-        {/* Header */}
-        <div className="flex justify-between items-center">
-          <div>
-            <h1 className="text-heading">Gestione Clienti</h1>
-            <p className="text-body">Anagrafica clienti e gestione listini prezzi</p>
-          </div>
-          <Button className="btn-primary">
-            <Plus className="h-4 w-4 mr-2" />
-            Nuovo Cliente
-          </Button>
-        </div>
-
-        {/* Search */}
-        <Card className="card-elevated">
-          <CardHeader>
-            <CardTitle className="text-lg">Ricerca Clienti</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="relative">
-              <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Cerca per nome, codice cliente o partita IVA..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10 input-business"
+        <PageHeader
+          title="Gestione Clienti"
+          description="Anagrafica clienti e gestione listini prezzi"
+          actions={
+            <div className="flex gap-2">
+              <ViewModeToggle 
+                viewMode={viewMode} 
+                onViewModeChange={setViewMode} 
+              />
+              <ActionButtonGroup
+                actions={[{
+                  icon: Plus,
+                  label: 'Nuovo Cliente',
+                  onClick: () => {},
+                  variant: 'default'
+                }]}
               />
             </div>
-          </CardContent>
-        </Card>
+          }
+        />
 
-        {/* Customers Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {filteredCustomers.map((customer) => (
-            <Card key={customer.customer_id} className="card-interactive">
-              <CardHeader>
-                <div className="flex items-start justify-between">
-                  <div className="space-y-1">
-                    <CardTitle className="text-lg">{customer.name}</CardTitle>
-                    <div className="flex items-center gap-2">
-                      <Badge variant="outline">{customer.customer_id}</Badge>
-                      {customer.vat_number && (
-                        <span className="text-sm font-mono text-muted-foreground">
-                          {customer.vat_number}
-                        </span>
-                      )}
+        <SearchFilterCard
+          searchTerm={searchTerm}
+          onSearchChange={setSearchTerm}
+          placeholder="Cerca per nome, codice cliente o partita IVA..."
+        />
+
+        {/* Customers Display */}
+        {viewMode === 'cards' ? (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {filteredCustomers.map((customer) => (
+              <Card key={customer.customer_id} className="card-interactive">
+                <CardContent className="p-6">
+                  <div className="flex items-start justify-between mb-4">
+                    <div className="space-y-1">
+                      <h3 className="text-lg font-semibold">{customer.name}</h3>
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline">{customer.customer_id}</Badge>
+                        {customer.vat_number && (
+                          <span className="text-sm font-mono text-muted-foreground">
+                            {customer.vat_number}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <Users className="h-5 w-5 text-muted-foreground" />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4 text-sm mb-4">
+                    <div>
+                      <p className="text-muted-foreground">Fatturato Annuo</p>
+                      <p className="font-semibold">
+                        {customer.annual_revenue_eur ? 
+                          `€${(customer.annual_revenue_eur / 1000000).toFixed(1)}M` : 
+                          'N/D'
+                        }
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground">Contatti</p>
+                      <p className="font-semibold">
+                        {JSON.parse(customer.contacts).length} contatto{JSON.parse(customer.contacts).length !== 1 ? 'i' : ''}
+                      </p>
                     </div>
                   </div>
-                  <Users className="h-5 w-5 text-muted-foreground" />
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-2 gap-4 text-sm">
-                  <div>
-                    <p className="text-muted-foreground">Fatturato Annuo</p>
-                    <p className="font-semibold">
-                      {customer.annual_revenue_eur ? 
-                        `€${(customer.annual_revenue_eur / 1000000).toFixed(1)}M` : 
-                        'N/D'
-                      }
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground">Contatti</p>
-                    <p className="font-semibold">
-                      {JSON.parse(customer.contacts).length} contatto{JSON.parse(customer.contacts).length !== 1 ? 'i' : ''}
-                    </p>
-                  </div>
-                </div>
 
-                {customer.website && (
-                  <div className="text-sm">
-                    <p className="text-muted-foreground">Sito Web</p>
-                    <a 
-                      href={customer.website} 
-                      target="_blank" 
-                      rel="noopener noreferrer"
-                      className="text-primary hover:underline flex items-center gap-1"
-                    >
-                      <Globe className="h-3 w-3" />
-                      {customer.website.replace('https://', '')}
-                    </a>
-                  </div>
-                )}
+                  {customer.website && (
+                    <div className="text-sm mb-4">
+                      <p className="text-muted-foreground">Sito Web</p>
+                      <a 
+                        href={customer.website} 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="text-primary hover:underline flex items-center gap-1"
+                      >
+                        <Globe className="h-3 w-3" />
+                        {customer.website.replace('https://', '')}
+                      </a>
+                    </div>
+                  )}
 
-                {customer.notes && (
-                  <div className="text-sm">
-                    <p className="text-muted-foreground">Note</p>
-                    <p className="text-xs leading-relaxed">{customer.notes}</p>
-                  </div>
-                )}
+                  {customer.notes && (
+                    <div className="text-sm mb-4">
+                      <p className="text-muted-foreground">Note</p>
+                      <p className="text-xs leading-relaxed">{customer.notes}</p>
+                    </div>
+                  )}
 
-                <div className="flex justify-between items-center pt-4 border-t border-border">
-                  <div className="flex gap-2">
-                    <Button size="sm" variant="outline">
-                      <Eye className="h-3 w-3 mr-1" />
-                      Dettagli
-                    </Button>
-                    <Button size="sm" variant="outline">
-                      <Edit className="h-3 w-3 mr-1" />
-                      Modifica
-                    </Button>
+                  <div className="flex justify-between items-center pt-4 border-t border-border">
+                    <ActionButtonGroup
+                      actions={[
+                        {
+                          icon: Eye,
+                          label: 'Dettagli',
+                          onClick: () => {},
+                          variant: 'outline'
+                        },
+                        {
+                          icon: Edit,
+                          label: 'Modifica',
+                          onClick: () => {},
+                          variant: 'outline'
+                        }
+                      ]}
+                    />
+                    <ActionButtonGroup
+                      actions={[{
+                        icon: FileText,
+                        label: 'Listini',
+                        onClick: () => {},
+                        variant: 'ghost'
+                      }]}
+                    />
                   </div>
-                  <Button size="sm" variant="ghost">
-                    <FileText className="h-3 w-3 mr-1" />
-                    Listini
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-
-        {filteredCustomers.length === 0 && (
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        ) : (
           <Card className="card-elevated">
-            <CardContent className="text-center py-12">
-              <Users className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-              <h3 className="text-lg font-semibold mb-2">Nessun cliente trovato</h3>
-              <p className="text-muted-foreground mb-4">
-                Prova a modificare i criteri di ricerca o aggiungi un nuovo cliente.
-              </p>
-              <Button className="btn-primary">
-                <Plus className="h-4 w-4 mr-2" />
-                Aggiungi Cliente
-              </Button>
+            <CardContent className="p-0">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Cliente</TableHead>
+                    <TableHead>Codice</TableHead>
+                    <TableHead>Partita IVA</TableHead>
+                    <TableHead className="text-right">Fatturato</TableHead>
+                    <TableHead>Contatti</TableHead>
+                    <TableHead>Sito Web</TableHead>
+                    <TableHead className="text-right">Azioni</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredCustomers.map((customer) => (
+                    <TableRow key={customer.customer_id}>
+                      <TableCell>
+                        <div>
+                          <div className="font-medium">{customer.name}</div>
+                          {customer.notes && (
+                            <div className="text-sm text-muted-foreground truncate max-w-xs">
+                              {customer.notes}
+                            </div>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline">{customer.customer_id}</Badge>
+                      </TableCell>
+                      <TableCell className="font-mono text-sm">
+                        {customer.vat_number || 'N/D'}
+                      </TableCell>
+                      <TableCell className="text-right font-semibold">
+                        {customer.annual_revenue_eur ? 
+                          `€${(customer.annual_revenue_eur / 1000000).toFixed(1)}M` : 
+                          'N/D'
+                        }
+                      </TableCell>
+                      <TableCell>
+                        {JSON.parse(customer.contacts).length} contatto{JSON.parse(customer.contacts).length !== 1 ? 'i' : ''}
+                      </TableCell>
+                      <TableCell>
+                        {customer.website ? (
+                          <a 
+                            href={customer.website} 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            className="text-primary hover:underline flex items-center gap-1"
+                          >
+                            <Globe className="h-3 w-3" />
+                            {customer.website.replace('https://', '')}
+                          </a>
+                        ) : 'N/D'}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <ActionButtonGroup
+                          actions={[
+                            {
+                              icon: Eye,
+                              label: 'Dettagli',
+                              onClick: () => {},
+                              variant: 'outline'
+                            },
+                            {
+                              icon: Edit,
+                              label: 'Modifica',
+                              onClick: () => {},
+                              variant: 'outline'
+                            },
+                            {
+                              icon: FileText,
+                              label: 'Listini',
+                              onClick: () => {},
+                              variant: 'ghost'
+                            }
+                          ]}
+                        />
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
             </CardContent>
           </Card>
+        )}
+
+        {filteredCustomers.length === 0 && (
+          <EmptyStateCard
+            icon={Users}
+            title="Nessun cliente trovato"
+            description="Prova a modificare i criteri di ricerca o aggiungi un nuovo cliente."
+            actionButton={{
+              label: "Aggiungi Cliente",
+              onClick: () => {},
+              icon: Plus
+            }}
+          />
         )}
       </div>
     </AppLayout>
