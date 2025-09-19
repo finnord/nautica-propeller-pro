@@ -413,28 +413,55 @@ export const priceListTemplate: TemplateSheet = {
   description: 'Template per importazione listini prezzi',
   headers: [
     'product_code',
-    'customer_name', 
+    'product_name',
+    'customer_name',
+    'customer_code',
     'list_name',
     'list_version',
     'list_identifier',
-    'unit_price'
+    'currency',
+    'valid_from',
+    'valid_to',
+    'unit_price',
+    'margin_percent',
+    'margin_euro',
+    'min_quantity',
+    'notes'
   ],
   data: [
     {
       product_code: 'SP-3142',
+      product_name: 'Impeller 14x21 SS',
       customer_name: 'Marina SpA',
+      customer_code: 'IT12345678901',
       list_name: 'Listino 2024',
-      list_version: 'v1.0', 
+      list_version: 'v1.0',
       list_identifier: '2024-001',
-      unit_price: 85.50
+      currency: 'EUR',
+      valid_from: '2024-01-01',
+      valid_to: '2024-12-31',
+      unit_price: 85.5,
+      margin_percent: 32,
+      margin_euro: 20.8,
+      min_quantity: 1,
+      notes: 'Applicare sconto fedeltà 5%'
     },
     {
       product_code: 'SP-2847',
+      product_name: 'Impeller 13x19 AL',
       customer_name: 'Marina SpA',
-      list_name: 'Listino 2024', 
+      customer_code: 'IT12345678901',
+      list_name: 'Listino 2024',
       list_version: 'v1.0',
       list_identifier: '2024-001',
-      unit_price: 72.30
+      currency: 'EUR',
+      valid_from: '2024-01-01',
+      valid_to: '2024-12-31',
+      unit_price: 72.3,
+      margin_percent: 28,
+      margin_euro: 15.8,
+      min_quantity: 2,
+      notes: 'Prezzo valido per ordini pallet'
     }
   ]
 };
@@ -447,22 +474,38 @@ export const downloadPriceListTemplate = () => {
     const infoSheet = XLSX.utils.aoa_to_sheet([
       ['TEMPLATE IMPORTAZIONE LISTINI PREZZI'],
       [''],
-      ['ISTRUZIONI:'],
-      ['1. Compilare tutte le colonne obbligatorie'],
-      ['2. I codici prodotto devono esistere nel database'],
-      ['3. I prezzi verranno confrontati con i costi base per calcolare i margini'],
-      ['4. Se il cliente non esiste verrà creato automaticamente'],
+      ['VALIDAZIONE INTELLIGENTE'],
+      ['• CRITICO: mancanza di product_code e product_name blocca l\'import'],
+      ['• IMPORTANTE: customer_name e list_name mancanti vanno corretti prima di importare'],
+      ['• SUGGERITO: currency, margin, note e date migliorano la qualità ma non bloccano l\'import'],
       [''],
-      ['COLONNE:'],
-      ['• product_code: Codice prodotto (obbligatorio)'],
-      ['• customer_name: Nome cliente (obbligatorio)'],
-      ['• list_name: Nome del listino (obbligatorio)'],
-      ['• list_version: Versione listino (es. v1.0)'],
-      ['• list_identifier: Identificativo univoco (es. 2024-001)'],
-      ['• unit_price: Prezzo unitario in EUR (obbligatorio)'],
+      ['STRATEGIA UPSERT'],
+      ['• I clienti inesistenti vengono creati con il relativo customer_code (VAT/Tax ID)'],
+      ['• I listini vengono generati con valuta e validità indicate'],
+      ['• Le righe di listino aggiornano prezzi, margini, quantità minima e note'],
       [''],
-      ['NOTA: Il margine verrà calcolato automaticamente confrontando'],
-      ['il prezzo unitario con il costo base del prodotto nel database.']
+      ['COLONNE SUPPORTATE'],
+      ['product_code', 'Codice prodotto interno CEF (alternativo a product_name)'],
+      ['product_name', 'Descrizione prodotto, usata se il codice non è presente'],
+      ['customer_name', 'Nome cliente (obbligatorio)'],
+      ['customer_code', 'Codice cliente / VAT per creazione rapida'],
+      ['list_name', 'Nome listino (obbligatorio)'],
+      ['list_version', 'Versione o revisione (opzionale)'],
+      ['list_identifier', 'Identificativo/nota per il listino'],
+      ['currency', 'Valuta (default EUR se vuoto)'],
+      ['valid_from', 'Data inizio validità (YYYY-MM-DD)'],
+      ['valid_to', 'Data fine validità (opzionale)'],
+      ['unit_price', 'Prezzo unitario. Se assente, viene calcolato da costi + margine'],
+      ['margin_percent', 'Margine % desiderato (opzionale)'],
+      ['margin_euro', 'Margine € (opzionale)'],
+      ['min_quantity', 'Quantità minima ordine (default 1)'],
+      ['notes', 'Note aggiuntive per la riga di listino'],
+      [''],
+      ['SUGGERIMENTI'],
+      ['• Utilizza il template come base: le colonne sono già formattate'],
+      ['• Puoi lasciare vuoti i campi non rilevanti: verranno impostati a valori di default'],
+      ['• Mantieni coerenti currency e validità per evitare listini duplicati'],
+      ['• Le date possono essere inserite come testo (YYYY-MM-DD) o come data Excel']
     ]);
     XLSX.utils.book_append_sheet(wb, infoSheet, 'ISTRUZIONI');
     
@@ -472,12 +515,21 @@ export const downloadPriceListTemplate = () => {
     
     // Set column widths
     ws['!cols'] = [
-      { wch: 15 }, // product_code
-      { wch: 25 }, // customer_name
-      { wch: 20 }, // list_name
+      { wch: 16 }, // product_code
+      { wch: 28 }, // product_name
+      { wch: 24 }, // customer_name
+      { wch: 18 }, // customer_code
+      { wch: 22 }, // list_name
       { wch: 12 }, // list_version
-      { wch: 15 }, // list_identifier  
-      { wch: 12 }  // unit_price
+      { wch: 18 }, // list_identifier
+      { wch: 10 }, // currency
+      { wch: 14 }, // valid_from
+      { wch: 14 }, // valid_to
+      { wch: 12 }, // unit_price
+      { wch: 14 }, // margin_percent
+      { wch: 14 }, // margin_euro
+      { wch: 12 }, // min_quantity
+      { wch: 28 }  // notes
     ];
     
     XLSX.utils.book_append_sheet(wb, ws, priceListTemplate.name);

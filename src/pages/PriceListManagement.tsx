@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -57,13 +57,10 @@ export const PriceListManagement = () => {
   const [showNewDialog, setShowNewDialog] = useState(false);
   const [showImportDialog, setShowImportDialog] = useState(false);
 
-  useEffect(() => {
-    fetchData();
-  }, []);
-
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     try {
-      // Fetch price lists with aggregated data
+      setLoading(true);
+
       const { data: priceListsData, error: priceListsError } = await supabase
         .from('price_lists')
         .select(`
@@ -80,53 +77,59 @@ export const PriceListManagement = () => {
 
       if (priceListsError) throw priceListsError;
 
-      // Fetch price list items count and average prices
-      const priceListsWithStats = await Promise.all(
-        (priceListsData || []).map(async (priceList) => {
-          const { data: itemsData, error: itemsError } = await supabase
-            .from('price_list_items')
-            .select('unit_price')
-            .eq('price_list_id', priceList.id);
+      const priceListIds = (priceListsData ?? []).map(priceList => priceList.id);
+      const priceListStats = new Map<string, { count: number; sum: number }>();
 
-          if (itemsError) {
-            console.error('Error fetching items for price list:', itemsError);
-            return {
-              ...priceList,
-              items_count: 0,
-              avg_price: 0
-            };
+      if (priceListIds.length > 0) {
+        const { data: itemsData, error: itemsError } = await supabase
+          .from('price_list_items')
+          .select('price_list_id, unit_price')
+          .in('price_list_id', priceListIds);
+
+        if (itemsError) throw itemsError;
+
+        (itemsData ?? []).forEach(item => {
+          if (!item.price_list_id) {
+            return;
           }
 
-          const items = itemsData || [];
-          const avgPrice = items.length > 0 
-            ? items.reduce((sum, item) => sum + item.unit_price, 0) / items.length 
-            : 0;
+          const current = priceListStats.get(item.price_list_id) ?? { count: 0, sum: 0 };
+          const unitPrice = item.unit_price ?? 0;
+          priceListStats.set(item.price_list_id, {
+            count: current.count + 1,
+            sum: current.sum + unitPrice
+          });
+        });
+      }
 
-          return {
-            ...priceList,
-            items_count: items.length,
-            avg_price: avgPrice
-          };
-        })
-      );
+      const priceListsWithStats = (priceListsData ?? []).map(priceList => {
+        const statsEntry = priceListStats.get(priceList.id) ?? { count: 0, sum: 0 };
+        return {
+          ...priceList,
+          items_count: statsEntry.count,
+          avg_price: statsEntry.count > 0 ? statsEntry.sum / statsEntry.count : 0
+        };
+      });
 
       setPriceLists(priceListsWithStats);
 
-      // Fetch customers
       const { data: customersData, error: customersError } = await supabase
         .from('customers')
         .select('id, name')
         .order('name');
 
       if (customersError) throw customersError;
-      setCustomers(customersData || []);
-
+      setCustomers(customersData ?? []);
     } catch (error) {
       console.error('Error fetching data:', error);
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
 
   const getValidityStatus = (validTo: string | null) => {
     if (!validTo) return { status: 'unlimited', label: 'Illimitato', variant: 'secondary' as const };
