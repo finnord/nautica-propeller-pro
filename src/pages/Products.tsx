@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
+import { useKeyboardShortcutsContext } from '@/contexts/KeyboardShortcutsContext';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { 
@@ -91,6 +92,7 @@ const getProductTypeLabel = (type: ProductType) => {
 
 export default function Products() {
   const navigate = useNavigate();
+  const { registerShortcut, unregisterShortcut } = useKeyboardShortcutsContext();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedType, setSelectedType] = useState<ProductType | 'all'>('all');
   const [viewMode, setViewMode] = useState<'cards' | 'table'>('cards');
@@ -111,6 +113,50 @@ export default function Products() {
     
     return matchesSearch && matchesType;
   });
+
+  // Register keyboard shortcuts
+  useEffect(() => {
+    const shortcuts = [
+      {
+        key: 'tab',
+        description: 'Cambia visualizzazione (cards/table)',
+        action: () => setViewMode(prev => prev === 'cards' ? 'table' : 'cards'),
+        category: 'view' as const
+      },
+      {
+        key: 'k',
+        ctrlKey: true,
+        description: 'Focus ricerca',
+        action: () => {
+          const searchInput = document.querySelector('input[placeholder*="ricerca"]') as HTMLInputElement;
+          searchInput?.focus();
+        },
+        category: 'search' as const
+      },
+      {
+        key: 'n',
+        ctrlKey: true,
+        description: 'Nuovo prodotto',
+        action: () => navigate('/products/new'),
+        category: 'actions' as const
+      },
+      {
+        key: 'escape',
+        description: 'Reset filtri',
+        action: () => {
+          setSearchTerm('');
+          setSelectedType('all');
+        },
+        category: 'search' as const
+      }
+    ];
+
+    shortcuts.forEach(registerShortcut);
+
+    return () => {
+      shortcuts.forEach(shortcut => unregisterShortcut(shortcut.key));
+    };
+  }, [registerShortcut, unregisterShortcut, navigate]);
 
   return (
     <AppLayout>

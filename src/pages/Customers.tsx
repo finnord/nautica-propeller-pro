@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
+import { useKeyboardShortcutsContext } from '@/contexts/KeyboardShortcutsContext';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { 
@@ -50,6 +51,7 @@ const mockCustomers: Customer[] = [
 ];
 
 export default function Customers() {
+  const { registerShortcut, unregisterShortcut } = useKeyboardShortcutsContext();
   const [searchTerm, setSearchTerm] = useState('');
   const [viewMode, setViewMode] = useState<'cards' | 'table'>('cards');
 
@@ -58,6 +60,49 @@ export default function Customers() {
     customer.customer_id.toLowerCase().includes(searchTerm.toLowerCase()) ||
     (customer.vat_number?.toLowerCase().includes(searchTerm.toLowerCase()) ?? false)
   );
+
+  // Register keyboard shortcuts
+  useEffect(() => {
+    const shortcuts = [
+      {
+        key: 'tab',
+        description: 'Cambia visualizzazione (cards/table)',
+        action: () => setViewMode(prev => prev === 'cards' ? 'table' : 'cards'),
+        category: 'view' as const
+      },
+      {
+        key: 'k',
+        ctrlKey: true,
+        description: 'Focus ricerca',
+        action: () => {
+          const searchInput = document.querySelector('input[placeholder*="ricerca"]') as HTMLInputElement;
+          searchInput?.focus();
+        },
+        category: 'search' as const
+      },
+      {
+        key: 'n',
+        ctrlKey: true,
+        description: 'Nuovo cliente',
+        action: () => {}, // TODO: implement new customer
+        category: 'actions' as const
+      },
+      {
+        key: 'escape',
+        description: 'Reset filtri',
+        action: () => {
+          setSearchTerm('');
+        },
+        category: 'search' as const
+      }
+    ];
+
+    shortcuts.forEach(registerShortcut);
+
+    return () => {
+      shortcuts.forEach(shortcut => unregisterShortcut(shortcut.key));
+    };
+  }, [registerShortcut, unregisterShortcut]);
 
   return (
     <AppLayout>

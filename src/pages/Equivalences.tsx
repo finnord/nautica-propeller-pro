@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
+import { useKeyboardShortcutsContext } from '@/contexts/KeyboardShortcutsContext';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -82,6 +83,7 @@ const getMatchTypeLabel = (type: MatchType) => {
 };
 
 export default function Equivalences() {
+  const { registerShortcut, unregisterShortcut } = useKeyboardShortcutsContext();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedTab, setSelectedTab] = useState('impellers');
   const [viewMode, setViewMode] = useState<'cards' | 'table'>('cards');
@@ -97,6 +99,61 @@ export default function Equivalences() {
     eq.target_bushing_code.toLowerCase().includes(searchTerm.toLowerCase()) ||
     (eq.general_note?.toLowerCase().includes(searchTerm.toLowerCase()) ?? false)
   );
+
+  // Register keyboard shortcuts
+  useEffect(() => {
+    const shortcuts = [
+      {
+        key: 'tab',
+        description: 'Cambia visualizzazione (cards/table)',
+        action: () => setViewMode(prev => prev === 'cards' ? 'table' : 'cards'),
+        category: 'view' as const
+      },
+      {
+        key: '1',
+        description: 'Vai a tab Giranti',
+        action: () => setSelectedTab('impellers'),
+        category: 'view' as const
+      },
+      {
+        key: '2',
+        description: 'Vai a tab Bussole',
+        action: () => setSelectedTab('bushings'),
+        category: 'view' as const
+      },
+      {
+        key: 'k',
+        ctrlKey: true,
+        description: 'Focus ricerca',
+        action: () => {
+          const searchInput = document.querySelector('input[placeholder*="ricerca"]') as HTMLInputElement;
+          searchInput?.focus();
+        },
+        category: 'search' as const
+      },
+      {
+        key: 'n',
+        ctrlKey: true,
+        description: 'Nuova equivalenza',
+        action: () => window.location.href = '/equivalences/new',
+        category: 'actions' as const
+      },
+      {
+        key: 'escape',
+        description: 'Reset filtri',
+        action: () => {
+          setSearchTerm('');
+        },
+        category: 'search' as const
+      }
+    ];
+
+    shortcuts.forEach(registerShortcut);
+
+    return () => {
+      shortcuts.forEach(shortcut => unregisterShortcut(shortcut.key));
+    };
+  }, [registerShortcut, unregisterShortcut]);
 
   return (
     <AppLayout>
