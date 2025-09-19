@@ -61,13 +61,13 @@ export interface Bushing {
 
 // Customer information
 export interface Customer {
-  customer_id: string;
+  id: string;
   name: string;
-  contacts: string; // Max 3 contacts as JSON string
-  website?: string;
-  vat_number?: string;
-  annual_revenue_eur?: number;
-  notes?: string;
+  contacts: string | null; // Max 3 contacts as JSON string
+  website?: string | null;
+  vat_number?: string | null;
+  annual_revenue_eur?: number | null;
+  notes?: string | null;
   created_at: string;
   updated_at: string;
 }

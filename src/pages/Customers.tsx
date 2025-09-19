@@ -18,46 +18,57 @@ import { SearchFilterCard } from '@/components/ui/search-filter-card';
 import { ActionButtonGroup } from '@/components/ui/action-button-group';
 import { EmptyStateCard } from '@/components/ui/empty-state-card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table-view';
-
-// Mock data for demonstration
-const mockCustomers: Customer[] = [
-  {
-    customer_id: 'C-001',
-    name: 'Marina di Capri S.r.l.',
-    contacts: JSON.stringify([
-      { name: 'Marco Rossi', email: 'marco@marinadicapri.it', phone: '+39 081 123456' },
-      { name: 'Laura Bianchi', email: 'laura@marinadicapri.it', phone: '+39 081 123457' }
-    ]),
-    website: 'https://marinadicapri.it',
-    vat_number: 'IT12345678901',
-    annual_revenue_eur: 2500000,
-    notes: 'Cliente principale per pompe marine di lusso',
-    created_at: '2024-01-15T10:30:00Z',
-    updated_at: '2024-01-20T14:22:00Z'
-  },
-  {
-    customer_id: 'C-002',
-    name: 'Cantieri Navali Mediterraneo',
-    contacts: JSON.stringify([
-      { name: 'Giuseppe Verdi', email: 'g.verdi@cantierimediterraneo.com', phone: '+39 010 987654' }
-    ]),
-    website: 'https://cantierimediterraneo.com',
-    vat_number: 'IT98765432109',
-    annual_revenue_eur: 5000000,
-    notes: 'Specializzati in yacht di media dimensione',
-    created_at: '2024-01-10T09:15:00Z',
-    updated_at: '2024-01-18T11:45:00Z'
-  }
-];
+import { NewCustomerDialog } from '@/components/dialogs/NewCustomerDialog';
+import { supabase } from '@/integrations/supabase/client';
+import { useToast } from '@/hooks/use-toast';
 
 export default function Customers() {
   const { registerShortcut, unregisterShortcut } = useKeyboardShortcutsContext();
+  const { toast } = useToast();
   const [searchTerm, setSearchTerm] = useState('');
   const [viewMode, setViewMode] = useState<'cards' | 'table'>('cards');
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [showNewCustomerDialog, setShowNewCustomerDialog] = useState(false);
 
-  const filteredCustomers = mockCustomers.filter(customer =>
+  // Load customers from database
+  const loadCustomers = async () => {
+    try {
+      setIsLoading(true);
+      const { data, error } = await supabase
+        .from('customers')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        throw error;
+      }
+
+      // Cast the data to match our Customer type
+      const customers = (data || []).map(customer => ({
+        ...customer,
+        contacts: typeof customer.contacts === 'string' ? customer.contacts : JSON.stringify(customer.contacts)
+      })) as Customer[];
+      
+      setCustomers(customers);
+    } catch (error) {
+      console.error('Errore nel caricamento clienti:', error);
+      toast({
+        title: 'Errore',
+        description: 'Errore nel caricamento dei clienti',
+        variant: 'destructive'
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadCustomers();
+  }, []);
+
+  const filteredCustomers = customers.filter(customer =>
     customer.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    customer.customer_id.toLowerCase().includes(searchTerm.toLowerCase()) ||
     (customer.vat_number?.toLowerCase().includes(searchTerm.toLowerCase()) ?? false)
   );
 
@@ -84,7 +95,7 @@ export default function Customers() {
         key: 'n',
         ctrlKey: true,
         description: 'Nuovo cliente',
-        action: () => {}, // TODO: implement new customer
+        action: () => setShowNewCustomerDialog(true),
         category: 'actions' as const
       },
       {
@@ -115,7 +126,7 @@ export default function Customers() {
               actions={[{
                 icon: Plus,
                 label: 'Nuovo Cliente',
-                onClick: () => {},
+                onClick: () => setShowNewCustomerDialog(true),
                 variant: 'default'
               }]}
             />
@@ -137,23 +148,26 @@ export default function Customers() {
         />
 
         {/* Customers Display */}
-        {viewMode === 'cards' ? (
+        {isLoading ? (
+          <div className="text-center py-8">
+            <p>Caricamento clienti...</p>
+          </div>
+        ) : viewMode === 'cards' ? (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {filteredCustomers.map((customer) => (
-              <Card key={customer.customer_id} className="card-interactive">
+              <Card key={customer.id} className="card-interactive">
                 <CardContent className="p-6">
                   <div className="flex items-start justify-between mb-4">
-                    <div className="space-y-1">
-                      <h3 className="text-lg font-semibold">{customer.name}</h3>
-                      <div className="flex items-center gap-2">
-                        <Badge variant="outline">{customer.customer_id}</Badge>
-                        {customer.vat_number && (
-                          <span className="text-sm font-mono text-muted-foreground">
-                            {customer.vat_number}
-                          </span>
-                        )}
+                      <div className="space-y-1">
+                        <h3 className="text-lg font-semibold">{customer.name}</h3>
+                        <div className="flex items-center gap-2">
+                          {customer.vat_number && (
+                            <span className="text-sm font-mono text-muted-foreground">
+                              {customer.vat_number}
+                            </span>
+                          )}
+                        </div>
                       </div>
-                    </div>
                     <Users className="h-5 w-5 text-muted-foreground" />
                   </div>
 
@@ -170,7 +184,7 @@ export default function Customers() {
                     <div>
                       <p className="text-muted-foreground">Contatti</p>
                       <p className="font-semibold">
-                        {JSON.parse(customer.contacts).length} contatto{JSON.parse(customer.contacts).length !== 1 ? 'i' : ''}
+                        {customer.contacts ? JSON.parse(customer.contacts).length : 0} contatto{customer.contacts && JSON.parse(customer.contacts).length !== 1 ? 'i' : ''}
                       </p>
                     </div>
                   </div>
@@ -244,7 +258,7 @@ export default function Customers() {
                 </TableHeader>
                 <TableBody>
                   {filteredCustomers.map((customer) => (
-                    <TableRow key={customer.customer_id}>
+                    <TableRow key={customer.id}>
                       <TableCell>
                         <div>
                           <div className="font-medium">{customer.name}</div>
@@ -256,7 +270,7 @@ export default function Customers() {
                         </div>
                       </TableCell>
                       <TableCell>
-                        <Badge variant="outline">{customer.customer_id}</Badge>
+                        <span className="text-sm text-muted-foreground">ID: {customer.id.slice(0, 8)}...</span>
                       </TableCell>
                       <TableCell className="font-mono text-sm">
                         {customer.vat_number || 'N/D'}
@@ -268,7 +282,7 @@ export default function Customers() {
                         }
                       </TableCell>
                       <TableCell>
-                        {JSON.parse(customer.contacts).length} contatto{JSON.parse(customer.contacts).length !== 1 ? 'i' : ''}
+                        {customer.contacts ? JSON.parse(customer.contacts).length : 0} contatto{customer.contacts && JSON.parse(customer.contacts).length !== 1 ? 'i' : ''}
                       </TableCell>
                       <TableCell>
                         {customer.website ? (
@@ -322,11 +336,17 @@ export default function Customers() {
             description="Prova a modificare i criteri di ricerca o aggiungi un nuovo cliente."
             actionButton={{
               label: "Aggiungi Cliente",
-              onClick: () => {},
+              onClick: () => setShowNewCustomerDialog(true),
               icon: Plus
             }}
           />
         )}
+        
+        <NewCustomerDialog 
+          open={showNewCustomerDialog}
+          onOpenChange={setShowNewCustomerDialog}
+          onCustomerCreated={loadCustomers}
+        />
       </div>
     </AppLayout>
   );
