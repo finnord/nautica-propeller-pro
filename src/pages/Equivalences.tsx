@@ -1,151 +1,122 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { useKeyboardShortcutsContext } from '@/contexts/KeyboardShortcutsContext';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { 
-  Plus, 
-  ArrowLeftRight, 
-  Eye,
-  Edit,
-  Ship,
-  Circle
-} from 'lucide-react';
-import { EquivalentImpeller, EquivalentBushing, MatchType } from '@/types';
+import { Button } from '@/components/ui/button';
 import { PageHeader } from '@/components/ui/page-header';
 import { ViewModeToggle } from '@/components/ui/view-mode-toggle';
 import { SearchFilterCard } from '@/components/ui/search-filter-card';
 import { ActionButtonGroup } from '@/components/ui/action-button-group';
 import { EmptyStateCard } from '@/components/ui/empty-state-card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table-view';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Plus, GitCompare, History, Map, AlertCircle } from 'lucide-react';
+import { useCrossMappings } from '@/hooks/useCrossMappings';
 
-// Mock data for demonstration
-const mockImpellerEquivalences: EquivalentImpeller[] = [
-  {
-    source_product_id: 'G-2847',
-    target_product_id: 'G-2901',
-    match_type: 'dimensional',
-    dimension_tolerance_mm: 1.0,
-    material_note: 'Compatibile EPDM/NBR',
-    bushing_note: 'Stesso profilo albero',
-    shaft_profile_note: 'D-shaft 12mm',
-    general_note: 'Sostituzione diretta per applicazioni marine standard'
-  },
-  {
-    source_product_id: 'G-1234',
-    target_product_id: 'G-5678',
-    match_type: 'full',
-    dimension_tolerance_mm: 0.1,
-    general_note: 'Equivalenza completa, stesso codice di ricambio'
-  }
-];
-
-const mockBushingEquivalences: EquivalentBushing[] = [
-  {
-    source_bushing_code: 'BO-012',
-    target_bushing_code: 'BP-012',
-    match_type: 'form-fit',
-    shaft_profile_compatible: 'yes',
-    material_note: 'Ottone vs Plastica - prestazioni simili',
-    general_note: 'Alternativa economica per applicazioni meno critiche'
-  }
-];
-
-const getMatchTypeColor = (type: MatchType) => {
-  switch (type) {
-    case 'full':
-      return 'bg-green-500/10 text-green-700 border-green-200';
-    case 'dimensional':
-      return 'bg-blue-500/10 text-blue-700 border-blue-200';
-    case 'form-fit':
-      return 'bg-yellow-500/10 text-yellow-700 border-yellow-200';
-    case 'partial':
-      return 'bg-red-500/10 text-red-700 border-red-200';
-    default:
-      return 'bg-muted text-muted-foreground';
-  }
-};
-
-const getMatchTypeLabel = (type: MatchType) => {
-  switch (type) {
-    case 'full':
-      return 'Completa';
-    case 'dimensional':
-      return 'Dimensionale';
-    case 'form-fit':
-      return 'Forma/Funzione';
-    case 'partial':
-      return 'Parziale';
-    default:
-      return type;
-  }
-};
+const formatNotes = (notes: string[]) => notes.filter(Boolean).join(' • ');
 
 export default function Equivalences() {
+  const navigate = useNavigate();
   const { registerShortcut, unregisterShortcut } = useKeyboardShortcutsContext();
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedTab, setSelectedTab] = useState('impellers');
+  const [selectedTab, setSelectedTab] = useState<'oem' | 'supersession' | 'applications'>('oem');
   const [viewMode, setViewMode] = useState<'cards' | 'table'>('cards');
 
-  const filteredImpellerEquivalences = mockImpellerEquivalences.filter(eq =>
-    eq.source_product_id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    eq.target_product_id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (eq.general_note?.toLowerCase().includes(searchTerm.toLowerCase()) ?? false)
-  );
+  const { isLoading, error, oemInterchanges, supersessions, applicationGuides } = useCrossMappings();
 
-  const filteredBushingEquivalences = mockBushingEquivalences.filter(eq =>
-    eq.source_bushing_code.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    eq.target_bushing_code.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (eq.general_note?.toLowerCase().includes(searchTerm.toLowerCase()) ?? false)
-  );
+  const normalizedQuery = searchTerm.trim().toLowerCase();
 
-  // Register keyboard shortcuts
+  const filteredOem = useMemo(() => {
+    return oemInterchanges.filter(entry => {
+      if (!normalizedQuery) return true;
+      return (
+        entry.cefCode.toLowerCase().includes(normalizedQuery) ||
+        entry.manufacturers.some(manufacturer =>
+          manufacturer.name.toLowerCase().includes(normalizedQuery) ||
+          manufacturer.codes.some(code => code.toLowerCase().includes(normalizedQuery)) ||
+          manufacturer.notes.some(note => note.toLowerCase().includes(normalizedQuery))
+        )
+      );
+    });
+  }, [normalizedQuery, oemInterchanges]);
+
+  const filteredSupersessions = useMemo(() => {
+    return supersessions.filter(entry => {
+      if (!normalizedQuery) return true;
+      return (
+        entry.cefCode.toLowerCase().includes(normalizedQuery) ||
+        entry.chain.some(item =>
+          item.code.toLowerCase().includes(normalizedQuery) ||
+          (item.note?.toLowerCase().includes(normalizedQuery) ?? false)
+        )
+      );
+    });
+  }, [normalizedQuery, supersessions]);
+
+  const filteredApplications = useMemo(() => {
+    return applicationGuides.filter(entry => {
+      if (!normalizedQuery) return true;
+      return (
+        entry.cefCode.toLowerCase().includes(normalizedQuery) ||
+        entry.applications.some(app =>
+          app.model.toLowerCase().includes(normalizedQuery) ||
+          app.referenceCode.toLowerCase().includes(normalizedQuery) ||
+          (app.note?.toLowerCase().includes(normalizedQuery) ?? false)
+        )
+      );
+    });
+  }, [normalizedQuery, applicationGuides]);
+
   useEffect(() => {
     const shortcuts = [
       {
         key: 'tab',
         description: 'Cambia visualizzazione (cards/table)',
-        action: () => setViewMode(prev => prev === 'cards' ? 'table' : 'cards'),
-        category: 'view' as const
+        action: () => setViewMode(prev => (prev === 'cards' ? 'table' : 'cards')),
+        category: 'view' as const,
       },
       {
         key: '1',
-        description: 'Vai a tab Giranti',
-        action: () => setSelectedTab('impellers'),
-        category: 'view' as const
+        description: 'Vai a OEM cross reference',
+        action: () => setSelectedTab('oem'),
+        category: 'view' as const,
       },
       {
         key: '2',
-        description: 'Vai a tab Bussole',
-        action: () => setSelectedTab('bushings'),
-        category: 'view' as const
+        description: 'Vai a Supersession',
+        action: () => setSelectedTab('supersession'),
+        category: 'view' as const,
+      },
+      {
+        key: '3',
+        description: 'Vai a Application guide',
+        action: () => setSelectedTab('applications'),
+        category: 'view' as const,
       },
       {
         key: 'k',
         ctrlKey: true,
         description: 'Focus ricerca',
-        action: () => {
-          const searchInput = document.querySelector('input[placeholder*="ricerca"]') as HTMLInputElement;
-          searchInput?.focus();
-        },
-        category: 'search' as const
+        action: () => searchInputRef.current?.focus(),
+        category: 'search' as const,
       },
       {
         key: 'n',
         ctrlKey: true,
         description: 'Nuova equivalenza',
-        action: () => window.location.href = '/equivalences/new',
-        category: 'actions' as const
+        action: () => navigate('/equivalences/new'),
+        category: 'actions' as const,
       },
       {
         key: 'escape',
         description: 'Reset filtri',
-        action: () => {
-          setSearchTerm('');
-        },
-        category: 'search' as const
-      }
+        action: () => setSearchTerm(''),
+        category: 'search' as const,
+      },
     ];
 
     shortcuts.forEach(registerShortcut);
@@ -153,341 +124,351 @@ export default function Equivalences() {
     return () => {
       shortcuts.forEach(shortcut => unregisterShortcut(shortcut.key));
     };
-  }, [registerShortcut, unregisterShortcut]);
+  }, [navigate, registerShortcut, unregisterShortcut]);
 
   return (
     <AppLayout>
       <div className="space-y-6">
         <PageHeader
           title="Gestione Equivalenze"
-          description="Equivalenze tra giranti e bussole per sostituzioni"
+          description="Cross mapping OEM, supersession e applicazioni motore"
           actions={
             <div className="flex gap-2">
-              <ViewModeToggle 
-                viewMode={viewMode} 
-                onViewModeChange={setViewMode} 
-              />
-              <ActionButtonGroup
-                actions={[{
-                  icon: Plus,
-                  label: 'Nuova Equivalenza',
-                  onClick: () => window.location.href = '/equivalences/new',
-                  variant: 'default'
-                }]}
-              />
+              <ViewModeToggle viewMode={viewMode} onViewModeChange={setViewMode} />
+              <Button className="gap-2" onClick={() => navigate('/equivalences/new')}>
+                <Plus className="h-4 w-4" />
+                Nuova equivalenza
+              </Button>
             </div>
           }
         />
 
         <SearchFilterCard
+          ref={searchInputRef}
           searchTerm={searchTerm}
           onSearchChange={setSearchTerm}
-          placeholder="Cerca per codice prodotto, bussola o note..."
+          placeholder="Cerca per codice CEF, OEM o applicazione..."
         />
 
-        {/* Equivalences Tabs */}
-        <Tabs value={selectedTab} onValueChange={setSelectedTab}>
-          <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="impellers" className="flex items-center gap-2">
-              <Ship className="h-4 w-4" />
-              Giranti
-            </TabsTrigger>
-            <TabsTrigger value="bushings" className="flex items-center gap-2">
-              <Circle className="h-4 w-4" />
-              Bussole
-            </TabsTrigger>
-          </TabsList>
+        {error && (
+          <Alert variant="destructive">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
 
-          <TabsContent value="impellers" className="space-y-4">
-            {viewMode === 'cards' ? (
-              <div className="grid grid-cols-1 gap-4">
-                {filteredImpellerEquivalences.map((eq, index) => (
-                  <Card key={index} className="card-interactive">
-                    <CardContent className="pt-6">
-                      <div className="flex items-center justify-between mb-4">
-                        <div className="flex items-center gap-4">
-                          <div className="text-center">
-                            <p className="text-sm text-muted-foreground">Sorgente</p>
-                            <p className="font-mono font-semibold">{eq.source_product_id}</p>
-                          </div>
-                          <ArrowLeftRight className="h-5 w-5 text-muted-foreground" />
-                          <div className="text-center">
-                            <p className="text-sm text-muted-foreground">Target</p>
-                            <p className="font-mono font-semibold">{eq.target_product_id}</p>
-                          </div>
-                        </div>
-                        <Badge className={getMatchTypeColor(eq.match_type)}>
-                          {getMatchTypeLabel(eq.match_type)}
-                        </Badge>
-                      </div>
+        {isLoading ? (
+          <div className="flex items-center justify-center h-48">
+            <div className="text-center">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4" />
+              <p className="text-muted-foreground">Caricamento delle equivalenze...</p>
+            </div>
+          </div>
+        ) : (
+          <Tabs value={selectedTab} onValueChange={value => setSelectedTab(value as typeof selectedTab)}>
+            <TabsList className="grid w-full grid-cols-3">
+              <TabsTrigger value="oem" className="flex items-center gap-2">
+                <GitCompare className="h-4 w-4" />
+                OEM cross reference
+              </TabsTrigger>
+              <TabsTrigger value="supersession" className="flex items-center gap-2">
+                <History className="h-4 w-4" />
+                Supersession
+              </TabsTrigger>
+              <TabsTrigger value="applications" className="flex items-center gap-2">
+                <Map className="h-4 w-4" />
+                Application guide
+              </TabsTrigger>
+            </TabsList>
 
-                      {eq.dimension_tolerance_mm && (
-                        <div className="mb-3">
-                          <p className="text-sm text-muted-foreground">Tolleranza Dimensionale</p>
-                          <p className="text-sm font-semibold">±{eq.dimension_tolerance_mm}mm</p>
-                        </div>
-                      )}
-
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4 text-sm">
-                        {eq.material_note && (
+            <TabsContent value="oem" className="space-y-4">
+              {filteredOem.length === 0 ? (
+                <EmptyStateCard
+                  icon={GitCompare}
+                  title="Nessuna equivalenza OEM"
+                  description="Non sono disponibili cross reference per i criteri selezionati"
+                  actions={[{
+                    icon: Plus,
+                    label: 'Aggiungi equivalenza',
+                    onClick: () => navigate('/equivalences/new'),
+                    variant: 'default',
+                  }]}
+                />
+              ) : viewMode === 'cards' ? (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                  {filteredOem.map(entry => (
+                    <Card key={entry.cefCode} className="card-interactive">
+                      <CardContent className="pt-6 space-y-4">
+                        <div className="flex items-start justify-between">
                           <div>
-                            <p className="text-muted-foreground">Note Materiale</p>
-                            <p className="text-xs leading-relaxed">{eq.material_note}</p>
+                            <p className="text-sm text-muted-foreground">Codice CEF</p>
+                            <p className="font-mono text-lg font-semibold">{entry.cefCode}</p>
                           </div>
-                        )}
-                        {eq.bushing_note && (
-                          <div>
-                            <p className="text-muted-foreground">Note Bussola</p>
-                            <p className="text-xs leading-relaxed">{eq.bushing_note}</p>
-                          </div>
-                        )}
-                        {eq.shaft_profile_note && (
-                          <div>
-                            <p className="text-muted-foreground">Profilo Albero</p>
-                            <p className="text-xs leading-relaxed">{eq.shaft_profile_note}</p>
-                          </div>
-                        )}
-                      </div>
-
-                      {eq.general_note && (
-                        <div className="mb-4">
-                          <p className="text-sm text-muted-foreground">Note Generali</p>
-                          <p className="text-xs leading-relaxed">{eq.general_note}</p>
+                          <Badge variant="secondary">OEM interscambio</Badge>
                         </div>
-                      )}
 
-                      <div className="flex justify-end gap-2 pt-4 border-t border-border">
-                        <ActionButtonGroup
-                          actions={[
-                            {
-                              icon: Eye,
-                              label: 'Dettagli',
-                              onClick: () => {},
-                              variant: 'outline'
-                            },
-                            {
-                              icon: Edit,
-                              label: 'Modifica',
-                              onClick: () => {},
-                              variant: 'outline'
-                            }
-                          ]}
-                        />
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            ) : (
-              <Card className="card-elevated">
-                <CardContent className="p-0">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Sorgente</TableHead>
-                        <TableHead>Target</TableHead>
-                        <TableHead>Tipo Equivalenza</TableHead>
-                        <TableHead>Tolleranza</TableHead>
-                        <TableHead>Note</TableHead>
-                        <TableHead className="text-right">Azioni</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {filteredImpellerEquivalences.map((eq, index) => (
-                        <TableRow key={index}>
-                          <TableCell className="font-mono">{eq.source_product_id}</TableCell>
-                          <TableCell className="font-mono">{eq.target_product_id}</TableCell>
-                          <TableCell>
-                            <Badge className={getMatchTypeColor(eq.match_type)}>
-                              {getMatchTypeLabel(eq.match_type)}
-                            </Badge>
-                          </TableCell>
-                          <TableCell>
-                            {eq.dimension_tolerance_mm ? `±${eq.dimension_tolerance_mm}mm` : 'N/D'}
-                          </TableCell>
-                          <TableCell className="max-w-xs truncate">
-                            {eq.general_note || eq.material_note || 'N/D'}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <ActionButtonGroup
-                              actions={[
-                                {
-                                  icon: Eye,
-                                  label: 'Dettagli',
-                                  onClick: () => {},
-                                  variant: 'outline'
-                                },
-                                {
-                                  icon: Edit,
-                                  label: 'Modifica',
-                                  onClick: () => {},
-                                  variant: 'outline'
+                        <div className="space-y-3">
+                          {entry.manufacturers.map(manufacturer => (
+                            <div key={`${entry.cefCode}-${manufacturer.name}`} className="border rounded-lg p-3 bg-muted/30">
+                              <div className="flex items-center justify-between">
+                                <p className="text-sm font-semibold">{manufacturer.name}</p>
+                                <Badge variant="outline">{manufacturer.codes.length} codici</Badge>
+                              </div>
+                              <div className="flex flex-wrap gap-2 mt-2">
+                                {manufacturer.codes.map(code => (
+                                  <Badge key={code} variant="outline" className="font-mono">
+                                    {code}
+                                  </Badge>
+                                ))}
+                              </div>
+                              {manufacturer.notes.length > 0 && (
+                                <p className="text-xs text-muted-foreground mt-2">
+                                  {formatNotes(manufacturer.notes)}
+                                </p>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+
+                        <div className="flex justify-end">
+                          <ActionButtonGroup
+                            actions={[{
+                              icon: GitCompare,
+                              label: 'Apri prodotto',
+                              onClick: () => {
+                                if (entry.propellerId) {
+                                  navigate(`/products/${entry.propellerId}`);
+                                } else {
+                                  navigate(`/search?query=${encodeURIComponent(entry.cefCode)}`);
                                 }
-                              ]}
-                            />
-                          </TableCell>
+                              },
+                              variant: 'outline',
+                            }]}
+                          />
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              ) : (
+                <Card className="card-elevated">
+                  <CardContent>
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Codice CEF</TableHead>
+                          <TableHead>OEM</TableHead>
+                          <TableHead>Codici equivalenti</TableHead>
+                          <TableHead>Note</TableHead>
                         </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </CardContent>
-              </Card>
-            )}
-
-            {filteredImpellerEquivalences.length === 0 && (
-              <EmptyStateCard
-                icon={Ship}
-                title="Nessuna equivalenza trovata"
-                description="Prova a modificare i criteri di ricerca o aggiungi una nuova equivalenza."
-                actionButton={{
-                  label: "Nuova Equivalenza Girante",
-                  onClick: () => window.location.href = '/equivalences/new',
-                  icon: Plus
-                }}
-              />
-            )}
-          </TabsContent>
-
-          <TabsContent value="bushings" className="space-y-4">
-            {viewMode === 'cards' ? (
-              <div className="grid grid-cols-1 gap-4">
-                {filteredBushingEquivalences.map((eq, index) => (
-                  <Card key={index} className="card-interactive">
-                    <CardContent className="pt-6">
-                      <div className="flex items-center justify-between mb-4">
-                        <div className="flex items-center gap-4">
-                          <div className="text-center">
-                            <p className="text-sm text-muted-foreground">Sorgente</p>
-                            <p className="font-mono font-semibold">{eq.source_bushing_code}</p>
-                          </div>
-                          <ArrowLeftRight className="h-5 w-5 text-muted-foreground" />
-                          <div className="text-center">
-                            <p className="text-sm text-muted-foreground">Target</p>
-                            <p className="font-mono font-semibold">{eq.target_bushing_code}</p>
-                          </div>
-                        </div>
-                        <div className="flex gap-2">
-                          <Badge className={getMatchTypeColor(eq.match_type)}>
-                            {getMatchTypeLabel(eq.match_type)}
-                          </Badge>
-                          <Badge variant={eq.shaft_profile_compatible === 'yes' ? 'default' : 'destructive'}>
-                            Profilo: {eq.shaft_profile_compatible === 'yes' ? 'Compatibile' : 
-                                     eq.shaft_profile_compatible === 'no' ? 'Non Compatibile' : 'Sconosciuto'}
-                          </Badge>
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4 text-sm">
-                        {eq.material_note && (
-                          <div>
-                            <p className="text-muted-foreground">Note Materiale</p>
-                            <p className="text-xs leading-relaxed">{eq.material_note}</p>
-                          </div>
+                      </TableHeader>
+                      <TableBody>
+                        {filteredOem.flatMap(entry =>
+                          entry.manufacturers.map(manufacturer => (
+                            <TableRow key={`${entry.cefCode}-${manufacturer.name}`}>
+                              <TableCell className="font-mono">{entry.cefCode}</TableCell>
+                              <TableCell>{manufacturer.name}</TableCell>
+                              <TableCell>
+                                <div className="flex flex-wrap gap-2">
+                                  {manufacturer.codes.map(code => (
+                                    <Badge key={code} variant="outline" className="font-mono">
+                                      {code}
+                                    </Badge>
+                                  ))}
+                                </div>
+                              </TableCell>
+                              <TableCell className="text-sm text-muted-foreground">
+                                {formatNotes(manufacturer.notes) || '—'}
+                              </TableCell>
+                            </TableRow>
+                          ))
                         )}
-                      </div>
+                      </TableBody>
+                    </Table>
+                  </CardContent>
+                </Card>
+              )}
+            </TabsContent>
 
-                      {eq.general_note && (
-                        <div className="mb-4">
-                          <p className="text-sm text-muted-foreground">Note Generali</p>
-                          <p className="text-xs leading-relaxed">{eq.general_note}</p>
+            <TabsContent value="supersession" className="space-y-4">
+              {filteredSupersessions.length === 0 ? (
+                <EmptyStateCard
+                  icon={History}
+                  title="Nessuna supersession disponibile"
+                  description="Non sono presenti catene di supersessione per i criteri selezionati"
+                />
+              ) : viewMode === 'cards' ? (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                  {filteredSupersessions.map(entry => (
+                    <Card key={entry.cefCode} className="card-interactive">
+                      <CardContent className="pt-6 space-y-4">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="text-sm text-muted-foreground">Codice CEF origine</p>
+                            <p className="font-mono text-lg font-semibold">{entry.cefCode}</p>
+                          </div>
+                          <Badge variant="secondary">Supersession</Badge>
                         </div>
-                      )}
 
-                      <div className="flex justify-end gap-2 pt-4 border-t border-border">
-                        <ActionButtonGroup
-                          actions={[
-                            {
-                              icon: Eye,
-                              label: 'Dettagli',
-                              onClick: () => {},
-                              variant: 'outline'
-                            },
-                            {
-                              icon: Edit,
-                              label: 'Modifica',
-                              onClick: () => {},
-                              variant: 'outline'
-                            }
-                          ]}
-                        />
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            ) : (
-              <Card className="card-elevated">
-                <CardContent className="p-0">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Sorgente</TableHead>
-                        <TableHead>Target</TableHead>
-                        <TableHead>Tipo Equivalenza</TableHead>
-                        <TableHead>Compatibilità Profilo</TableHead>
-                        <TableHead>Note</TableHead>
-                        <TableHead className="text-right">Azioni</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {filteredBushingEquivalences.map((eq, index) => (
-                        <TableRow key={index}>
-                          <TableCell className="font-mono">{eq.source_bushing_code}</TableCell>
-                          <TableCell className="font-mono">{eq.target_bushing_code}</TableCell>
-                          <TableCell>
-                            <Badge className={getMatchTypeColor(eq.match_type)}>
-                              {getMatchTypeLabel(eq.match_type)}
-                            </Badge>
-                          </TableCell>
-                          <TableCell>
-                            <Badge variant={eq.shaft_profile_compatible === 'yes' ? 'default' : 'destructive'}>
-                              {eq.shaft_profile_compatible === 'yes' ? 'Compatibile' : 
-                               eq.shaft_profile_compatible === 'no' ? 'Non Compatibile' : 'Sconosciuto'}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="max-w-xs truncate">
-                            {eq.general_note || eq.material_note || 'N/D'}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <ActionButtonGroup
-                              actions={[
-                                {
-                                  icon: Eye,
-                                  label: 'Dettagli',
-                                  onClick: () => {},
-                                  variant: 'outline'
-                                },
-                                {
-                                  icon: Edit,
-                                  label: 'Modifica',
-                                  onClick: () => {},
-                                  variant: 'outline'
+                        <div className="space-y-2">
+                          {entry.chain.map((item, index) => (
+                            <div key={`${entry.cefCode}-${item.code}-${index}`} className="flex items-start gap-3">
+                              <Badge variant="outline" className="font-mono">
+                                {item.code}
+                              </Badge>
+                              <div className="text-xs text-muted-foreground">
+                                {item.note || 'Codice successivo nella catena'}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+
+                        <div className="flex justify-end">
+                          <ActionButtonGroup
+                            actions={[{
+                              icon: History,
+                              label: 'Dettaglio prodotto',
+                              onClick: () => {
+                                if (entry.propellerId) {
+                                  navigate(`/products/${entry.propellerId}`);
+                                } else {
+                                  navigate(`/search?query=${encodeURIComponent(entry.cefCode)}`);
                                 }
-                              ]}
-                            />
-                          </TableCell>
+                              },
+                              variant: 'outline',
+                            }]}
+                          />
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              ) : (
+                <Card className="card-elevated">
+                  <CardContent>
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Codice CEF</TableHead>
+                          <TableHead>Sequenza supersession</TableHead>
+                          <TableHead>Note</TableHead>
                         </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </CardContent>
-              </Card>
-            )}
+                      </TableHeader>
+                      <TableBody>
+                        {filteredSupersessions.map(entry => (
+                          <TableRow key={entry.cefCode}>
+                            <TableCell className="font-mono align-top">{entry.cefCode}</TableCell>
+                            <TableCell className="align-top">
+                              <div className="space-y-1">
+                                {entry.chain.map((item, index) => (
+                                  <div key={`${entry.cefCode}-${item.code}-${index}`} className="flex items-center gap-2">
+                                    <Badge variant="outline" className="font-mono">
+                                      {item.code}
+                                    </Badge>
+                                    <span className="text-xs text-muted-foreground">
+                                      {item.note || 'Successivo'}
+                                    </span>
+                                  </div>
+                                ))}
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-xs text-muted-foreground align-top">
+                              {entry.chain.some(item => item.note) ?
+                                entry.chain.map(item => item.note).filter(Boolean).join(' • ') :
+                                '—'}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </CardContent>
+                </Card>
+              )}
+            </TabsContent>
 
-            {filteredBushingEquivalences.length === 0 && (
-              <EmptyStateCard
-                icon={Circle}
-                title="Nessuna equivalenza trovata"
-                description="Prova a modificare i criteri di ricerca o aggiungi una nuova equivalenza."
-                actionButton={{
-                  label: "Nuova Equivalenza Bussola",
-                  onClick: () => window.location.href = '/equivalences/new',
-                  icon: Plus
-                }}
-              />
-            )}
-          </TabsContent>
-        </Tabs>
+            <TabsContent value="applications" className="space-y-4">
+              {filteredApplications.length === 0 ? (
+                <EmptyStateCard
+                  icon={Map}
+                  title="Nessuna applicazione trovata"
+                  description="Non risultano applicazioni motore/modello per i filtri impostati"
+                />
+              ) : viewMode === 'cards' ? (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                  {filteredApplications.map(entry => (
+                    <Card key={entry.cefCode} className="card-interactive">
+                      <CardContent className="pt-6 space-y-4">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="text-sm text-muted-foreground">Codice CEF</p>
+                            <p className="font-mono text-lg font-semibold">{entry.cefCode}</p>
+                          </div>
+                          <Badge variant="secondary">Application guide</Badge>
+                        </div>
+
+                        <div className="space-y-3">
+                          {entry.applications.map((app, index) => (
+                            <div key={`${entry.cefCode}-${app.referenceCode}-${index}`} className="border rounded-lg p-3">
+                              <p className="font-semibold text-sm">{app.model}</p>
+                              <p className="text-xs text-muted-foreground">Codice OEM: {app.referenceCode}</p>
+                              {app.note && (
+                                <p className="text-xs text-muted-foreground mt-1">{app.note}</p>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+
+                        <div className="flex justify-end">
+                          <ActionButtonGroup
+                            actions={[{
+                              icon: Map,
+                              label: 'Apri prodotto',
+                              onClick: () => {
+                                if (entry.propellerId) {
+                                  navigate(`/products/${entry.propellerId}`);
+                                } else {
+                                  navigate(`/search?query=${encodeURIComponent(entry.cefCode)}`);
+                                }
+                              },
+                              variant: 'outline',
+                            }]}
+                          />
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              ) : (
+                <Card className="card-elevated">
+                  <CardContent>
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Codice CEF</TableHead>
+                          <TableHead>Applicazione motore/modello</TableHead>
+                          <TableHead>OEM</TableHead>
+                          <TableHead>Note</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {filteredApplications.flatMap(entry =>
+                          entry.applications.map((app, index) => (
+                            <TableRow key={`${entry.cefCode}-${app.referenceCode}-${index}`}>
+                              <TableCell className="font-mono">{entry.cefCode}</TableCell>
+                              <TableCell>{app.model}</TableCell>
+                              <TableCell>{app.referenceCode}</TableCell>
+                              <TableCell className="text-xs text-muted-foreground">{app.note || '—'}</TableCell>
+                            </TableRow>
+                          ))
+                        )}
+                      </TableBody>
+                    </Table>
+                  </CardContent>
+                </Card>
+              )}
+            </TabsContent>
+          </Tabs>
+        )}
       </div>
     </AppLayout>
   );

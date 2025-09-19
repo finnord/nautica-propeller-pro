@@ -1,4 +1,4 @@
-import { ReactNode } from 'react';
+import { ReactNode, forwardRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Search } from 'lucide-react';
@@ -10,12 +10,12 @@ interface SearchFilterCardProps {
   children?: ReactNode;
 }
 
-export const SearchFilterCard = ({ 
-  searchTerm, 
-  onSearchChange, 
+const SearchFilterCard = forwardRef<HTMLInputElement, SearchFilterCardProps>(({ 
+  searchTerm,
+  onSearchChange,
   placeholder,
-  children 
-}: SearchFilterCardProps) => {
+  children
+}, ref) => {
   return (
     <Card className="card-elevated">
       <CardHeader>
@@ -27,6 +27,7 @@ export const SearchFilterCard = ({
             <div className="relative">
               <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
               <Input
+                ref={ref}
                 placeholder={placeholder}
                 value={searchTerm}
                 onChange={(e) => onSearchChange(e.target.value)}
@@ -43,4 +44,8 @@ export const SearchFilterCard = ({
       </CardContent>
     </Card>
   );
-};
+});
+
+SearchFilterCard.displayName = 'SearchFilterCard';
+
+export { SearchFilterCard };
